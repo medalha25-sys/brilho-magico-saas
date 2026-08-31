@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, use } from 'react';
-import { Calendar, Car, Bike, Clock, Check, User, Phone, Tag, MessageSquare, ArrowLeft } from 'lucide-react';
+import { Calendar, Car, Bike, Clock, Check, User, Phone, Tag, MessageSquare, ArrowLeft, FileText } from 'lucide-react';
 import { createClient } from '@/utils/supabase/client';
 
 interface Service {
@@ -30,6 +30,8 @@ export default function BookingPage({ params }: { params: Promise<{ tenantSlug: 
   const [customerName, setCustomerName] = useState('');
   const [customerPhone, setCustomerPhone] = useState('');
   const [vehiclePlate, setVehiclePlate] = useState('');
+  const [customerCpf, setCustomerCpf] = useState('');
+  const [wantCpf, setWantCpf] = useState(false);
   const [loading, setLoading] = useState(false);
 
   // Estados dinâmicos do Supabase
@@ -195,6 +197,7 @@ export default function BookingPage({ params }: { params: Promise<{ tenantSlug: 
           customer_name: customerName,
           customer_phone: customerPhone,
           vehicle_plate: vehiclePlate,
+          customer_cpf: wantCpf ? customerCpf : null,
           scheduled_at: scheduledAt,
           total_price: selectedService.price,
           status: 'PENDENTE'
@@ -232,7 +235,7 @@ export default function BookingPage({ params }: { params: Promise<{ tenantSlug: 
 - *Veículo:* ${vehicleType === 'CARRO' ? '🚗 Carro' : '🏍️ Moto'} (${vehiclePlate.toUpperCase()})
 - *Serviço:* ${selectedService?.name}
 - *Data/Hora:* ${formattedDate} às ${selectedTime}
-- *Valor:* R$ ${selectedService?.price.toFixed(2)}`;
+- *Valor:* R$ ${selectedService?.price.toFixed(2)}${wantCpf ? `\n- *CPF na Nota:* ${customerCpf}` : ''}`;
 
     return `https://wa.me/${num}?text=${encodeURIComponent(text)}`;
   };
@@ -541,6 +544,36 @@ export default function BookingPage({ params }: { params: Promise<{ tenantSlug: 
                     className="block w-full pl-10 pr-3 py-3 border border-neutral-800 rounded-xl bg-neutral-950 text-neutral-100 placeholder-neutral-500 focus:outline-none focus:ring-1 focus:ring-green-500 focus:border-green-500 text-sm"
                   />
                 </div>
+              </div>
+
+              {/* CPF na Nota */}
+              <div className="flex flex-col gap-2.5 mt-2">
+                <label className="flex items-center gap-2 text-neutral-400 text-xs cursor-pointer select-none py-1">
+                  <input
+                    type="checkbox"
+                    checked={wantCpf}
+                    onChange={(e) => setWantCpf(e.target.checked)}
+                    className="rounded border-neutral-850 bg-neutral-950 text-green-500 focus:ring-green-500"
+                  />
+                  <span>Quero CPF na nota fiscal</span>
+                </label>
+
+                {wantCpf && (
+                  <div className="relative rounded-xl shadow-sm">
+                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                      <FileText className="h-4 w-4 text-neutral-500" />
+                    </div>
+                    <input
+                      type="text"
+                      required={wantCpf}
+                      placeholder="CPF do Cliente (apenas números)"
+                      value={customerCpf}
+                      onChange={(e) => setCustomerCpf(e.target.value.replace(/\D/g, ''))}
+                      maxLength={11}
+                      className="block w-full pl-10 pr-3 py-3 border border-neutral-800 rounded-xl bg-neutral-950 text-neutral-100 placeholder-neutral-500 focus:outline-none focus:ring-1 focus:ring-green-500 focus:border-green-500 text-sm"
+                    />
+                  </div>
+                )}
               </div>
             </div>
 

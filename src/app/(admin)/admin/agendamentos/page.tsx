@@ -8,6 +8,7 @@ interface Appointment {
   id: string;
   customer_name: string;
   customer_phone: string;
+  customer_cpf?: string | null;
   vehicle_plate: string;
   scheduled_at: string;
   total_price: number;
@@ -227,14 +228,21 @@ export default function AgendamentosPage() {
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="flex flex-col text-left">
                         <span className="font-semibold text-sm text-gray-900 dark:text-white">{app.customer_name}</span>
-                        <a 
-                          href={`https://wa.me/${app.customer_phone.replace(/\D/g, '')}`}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="inline-flex items-center gap-1 text-xs text-green-600 dark:text-green-400 font-medium hover:underline mt-0.5"
-                        >
-                          <Phone size={10} /> {app.customer_phone}
-                        </a>
+                        <div className="flex items-center gap-2 mt-0.5">
+                          <a 
+                            href={`https://wa.me/${app.customer_phone.replace(/\D/g, '')}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-1 text-xs text-green-600 dark:text-green-400 font-medium hover:underline"
+                          >
+                            <Phone size={10} /> {app.customer_phone}
+                          </a>
+                          {app.customer_cpf && (
+                            <span className="inline-flex items-center gap-1 text-[10px] text-gray-500 bg-gray-100 dark:bg-gray-800 dark:text-gray-450 px-1.5 py-0.5 rounded font-mono font-bold" title="CPF para nota fiscal">
+                              CPF: {app.customer_cpf.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, "$1.$2.$3-$4")}
+                            </span>
+                          )}
+                        </div>
                       </div>
                     </td>
                     {/* Veículo */}
