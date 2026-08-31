@@ -79,7 +79,15 @@ export default async function AdminLayout({ children }: { children: React.ReactN
         </header>
 
         {/* Page Content */}
-        {children}
+        <div className="flex-1 flex flex-col overflow-y-auto">
+          {children}
+        </div>
+
+        {/* Footer Criado por Kryon Systems */}
+        <footer className="py-3 text-center text-[10px] text-gray-450 dark:text-gray-600 border-t border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-950 flex items-center justify-center gap-1.5 shrink-0">
+          <span>Criado por</span>
+          <span className="font-bold text-gray-600 dark:text-gray-400 tracking-wider">KRYON SYSTEMS</span>
+        </footer>
       </main>
     </div>
   );

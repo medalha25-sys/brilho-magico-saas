@@ -159,6 +159,12 @@ export default function LoginPage() {
           </div>
         </div>
       </div>
+
+      {/* Footer Criado por Kryon Systems */}
+      <footer className="mt-8 text-center text-[10px] text-gray-400 dark:text-gray-600 flex items-center justify-center gap-1.5">
+        <span>Criado por</span>
+        <span className="font-bold text-gray-600 dark:text-gray-400 tracking-wider">KRYON SYSTEMS</span>
+      </footer>
     </div>
   );
 }

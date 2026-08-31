@@ -655,6 +655,12 @@ export default function BookingPage({ params }: { params: Promise<{ tenantSlug: 
         <p>Avenida Florips Crispim, N 644 - Bairro Novo Panorama</p>
         <p>Salinas - MG</p>
       </footer>
+
+      {/* Footer Criado por Kryon Systems */}
+      <footer className="mt-8 mb-4 text-center text-[10px] text-neutral-600 flex items-center justify-center gap-1.5">
+        <span>Criado por</span>
+        <span className="font-bold text-neutral-400 tracking-wider">KRYON SYSTEMS</span>
+      </footer>
     </div>
   );
 }
