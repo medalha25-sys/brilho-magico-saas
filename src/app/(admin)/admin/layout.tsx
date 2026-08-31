@@ -4,7 +4,8 @@ import {
   LayoutDashboard, 
   Settings, 
   Car, 
-  Menu
+  Menu,
+  MessageSquare
 } from 'lucide-react';
 import { ThemeToggle } from '@/components/ThemeToggle';
 import Link from 'next/link';
@@ -57,6 +58,23 @@ export default async function AdminLayout({ children }: { children: React.ReactN
             Configurações
           </Link>
         </nav>
+        
+        {/* Botão de Suporte no rodapé da Sidebar */}
+        <div className="p-4 border-t border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-950">
+          <a
+            href="https://wa.me/5538984257511"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex flex-col gap-1 p-3 rounded-xl bg-green-50 dark:bg-green-950/20 border border-green-200 dark:border-green-800 hover:bg-green-100 dark:hover:bg-green-950/30 transition-colors text-left"
+          >
+            <span className="flex items-center gap-1.5 text-xs font-bold text-green-700 dark:text-green-400">
+              <MessageSquare size={13} className="shrink-0" /> Suporte WhatsApp
+            </span>
+            <span className="text-[9px] text-gray-450 dark:text-gray-500 font-semibold leading-tight">
+              09h às 18h (Seg a Sex)
+            </span>
+          </a>
+        </div>
       </aside>
 
       {/* Main Content */}
