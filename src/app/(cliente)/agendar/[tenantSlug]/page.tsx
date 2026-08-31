@@ -295,7 +295,8 @@ export default function BookingPage({ params }: { params: Promise<{ tenantSlug: 
                   </div>
                   <input
                     type="text"
-                    placeholder="Placa do Veículo (Opcional)"
+                    required
+                    placeholder="Placa do Veículo"
                     value={vehiclePlate}
                     onChange={(e) => setVehiclePlate(e.target.value)}
                     className="block w-full pl-10 pr-3 py-3 border border-neutral-800 rounded-xl bg-neutral-950 text-neutral-100 placeholder-neutral-500 focus:outline-none focus:ring-1 focus:ring-green-500 focus:border-green-500 text-sm"
