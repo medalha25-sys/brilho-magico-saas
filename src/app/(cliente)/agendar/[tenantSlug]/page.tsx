@@ -36,6 +36,7 @@ export default function BookingPage({ params }: { params: Promise<{ tenantSlug: 
   const [services, setServices] = useState<Service[]>([]);
   const [bookedSlots, setBookedSlots] = useState<{ [key: string]: string[] }>({}); // key: 'yyyy-mm-dd', value: ['08:00', '09:30']
   const [loadingData, setLoadingData] = useState(true);
+  const [tenantInfo, setTenantInfo] = useState<{ name: string; logo_url: string; address: string } | null>(null);
 
   // 1. Carrega dados dinâmicos do Supabase
   useEffect(() => {
@@ -45,12 +46,17 @@ export default function BookingPage({ params }: { params: Promise<{ tenantSlug: 
         // Busca o lava-rápido pelo slug (ex: wash-express)
         const { data: tenantData } = await supabase
           .from('tenants')
-          .select('id')
+          .select('id, name, logo_url, address')
           .eq('slug', tenantSlug)
           .single();
         
         if (!tenantData) {
           console.warn("Lava-rápido não cadastrado. Usando serviços padrão de teste.");
+          setTenantInfo({
+            name: 'Brilho Mágico',
+            logo_url: '/logo.jpg',
+            address: 'Avenida Florips Crispim, N 644 - Bairro Novo Panorama, Salinas MG'
+          });
           setServices([
             { id: '1', name: 'Ducha Simples', price: 40.00, duration: 40, vehicleType: 'CARRO' },
             { id: '2', name: 'Lavagem Completa', price: 80.00, duration: 60, vehicleType: 'CARRO' },
@@ -61,6 +67,12 @@ export default function BookingPage({ params }: { params: Promise<{ tenantSlug: 
           setLoadingData(false);
           return;
         }
+
+        setTenantInfo({
+          name: tenantData.name,
+          logo_url: tenantData.logo_url || '/logo.jpg',
+          address: tenantData.address || 'Avenida Florips Crispim, N 644 - Bairro Novo Panorama, Salinas MG'
+        });
 
         // Busca os serviços ativos desse lava-rápido
         const { data: servicesData } = await supabase
@@ -266,12 +278,15 @@ export default function BookingPage({ params }: { params: Promise<{ tenantSlug: 
             {/* Header com Identidade Visual Brilho Mágico */}
             <header className="text-center mb-8 flex flex-col items-center">
               <img 
-                src="/logo.jpg" 
-                alt="Brilho Mágico Logo" 
-                className="w-24 h-24 rounded-2xl object-cover mb-4 border border-neutral-800"
+                src={tenantInfo?.logo_url || '/logo.jpg'} 
+                alt="Logo" 
+                className="w-24 h-24 rounded-2xl object-cover mb-4 border border-neutral-800 bg-neutral-950"
+                onError={(e) => {
+                  (e.target as HTMLImageElement).src = '/logo.jpg';
+                }}
               />
               <h1 className="text-2xl font-bold text-white tracking-wide">
-                Brilho Mágico
+                {tenantInfo?.name || 'Brilho Mágico'}
               </h1>
               <p className="text-green-500 text-xs font-semibold tracking-widest uppercase mt-1">
                 Studio Automotivo
@@ -652,8 +667,7 @@ export default function BookingPage({ params }: { params: Promise<{ tenantSlug: 
       {/* Footer com Endereço do Lava Rápido */}
       <footer className="mt-6 text-center text-[11px] text-neutral-500 max-w-xs mx-auto leading-relaxed">
         <p className="font-semibold text-neutral-400">📍 Endereço:</p>
-        <p>Avenida Florips Crispim, N 644 - Bairro Novo Panorama</p>
-        <p>Salinas - MG</p>
+        <p>{tenantInfo?.address || 'Avenida Florips Crispim, N 644 - Bairro Novo Panorama, Salinas - MG'}</p>
       </footer>
 
       {/* Footer Criado por Kryon Systems */}
