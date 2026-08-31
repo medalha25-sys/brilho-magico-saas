@@ -89,7 +89,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
             <div className="h-8 w-8 rounded-full bg-blue-600 flex items-center justify-center text-white font-bold text-sm">
               {initial}
             </div>
-            <div className="flex flex-col text-left hidden sm:block">
+            <div className="hidden sm:flex flex-col text-left">
               <span className="text-sm font-semibold text-gray-700 dark:text-gray-200">{userName}</span>
               <span className="text-xs text-gray-400 dark:text-gray-500 font-medium capitalize">{userRole.toLowerCase()}</span>
             </div>
