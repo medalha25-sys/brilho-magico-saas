@@ -550,44 +550,8 @@ export default function BookingPage({ params }: { params: Promise<{ tenantSlug: 
             <p className="text-green-500 text-xs font-semibold tracking-wider uppercase mt-1">Brilho Mágico agradece</p>
             
             <p className="text-neutral-400 text-sm mt-4 px-2 leading-relaxed">
-              Tudo pronto! Seu agendamento foi registrado no nosso banco de dados. 
-              Para dúvidas ou confirmação rápida, fale conosco pelo WhatsApp:
+              Tudo pronto! Seu agendamento foi registrado com sucesso.
             </p>
-
-            {/* Links de WhatsApp dos administradores */}
-            <div className="mt-6 space-y-3 w-full">
-              <a
-                href={getWhatsAppMessage('5538999200580')}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="w-full flex items-center justify-between p-4 bg-neutral-950 hover:bg-neutral-850 border border-neutral-800 rounded-2xl text-left transition-all duration-200"
-              >
-                <div>
-                  <p className="text-xs text-neutral-500">Atendimento Principal</p>
-                  <p className="font-bold text-sm text-white">Falar com Claudio</p>
-                  <p className="text-[10px] text-green-500 font-semibold uppercase mt-0.5">Admin</p>
-                </div>
-                <div className="w-10 h-10 rounded-full bg-green-600/10 text-green-500 flex items-center justify-center">
-                  <MessageSquare size={18} />
-                </div>
-              </a>
-
-              <a
-                href={getWhatsAppMessage('5538998853463')}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="w-full flex items-center justify-between p-4 bg-neutral-950 hover:bg-neutral-850 border border-neutral-800 rounded-2xl text-left transition-all duration-200"
-              >
-                <div>
-                  <p className="text-xs text-neutral-500">Gerência de Operações</p>
-                  <p className="font-bold text-sm text-white">Falar com Monaliza</p>
-                  <p className="text-[10px] text-green-500 font-semibold uppercase mt-0.5">Gerente Geral</p>
-                </div>
-                <div className="w-10 h-10 rounded-full bg-green-600/10 text-green-500 flex items-center justify-center">
-                  <MessageSquare size={18} />
-                </div>
-              </a>
-            </div>
 
             {/* Como chegar / Localização Google Maps */}
             <div className="mt-8 border-t border-neutral-800 pt-6 w-full text-left">
@@ -620,6 +584,49 @@ export default function BookingPage({ params }: { params: Promise<{ tenantSlug: 
               >
                 🗺️ Abrir Rota no Google Maps (GPS)
               </a>
+            </div>
+
+            {/* Links de WhatsApp dos administradores */}
+            <div className="mt-8 border-t border-neutral-800 pt-6 w-full text-left">
+              <h3 className="text-xs font-bold text-neutral-400 uppercase tracking-widest mb-3 flex items-center gap-1.5">
+                💬 Confirmar Agendamento / Contato
+              </h3>
+              <p className="text-[11px] text-neutral-400 mb-4 leading-relaxed">
+                Clique em um dos números abaixo para iniciar a conversa no WhatsApp:
+              </p>
+              <div className="space-y-3">
+                <a
+                  href={getWhatsAppMessage('5538999200580')}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="w-full flex items-center justify-between p-4 bg-neutral-950 hover:bg-neutral-850 border border-neutral-800 rounded-2xl text-left transition-all duration-200"
+                >
+                  <div>
+                    <p className="text-xs text-neutral-500">Atendimento Principal</p>
+                    <p className="font-bold text-sm text-white mt-0.5">Falar com Claudio</p>
+                    <p className="text-[10px] text-green-500 font-semibold uppercase mt-1">Admin</p>
+                  </div>
+                  <div className="w-10 h-10 rounded-full bg-green-600/10 text-green-500 flex items-center justify-center">
+                    <MessageSquare size={18} />
+                  </div>
+                </a>
+
+                <a
+                  href={getWhatsAppMessage('5538998853463')}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="w-full flex items-center justify-between p-4 bg-neutral-950 hover:bg-neutral-850 border border-neutral-800 rounded-2xl text-left transition-all duration-200"
+                >
+                  <div>
+                    <p className="text-xs text-neutral-500">Gerência de Operações</p>
+                    <p className="font-bold text-sm text-white mt-0.5">Falar com Monaliza</p>
+                    <p className="text-[10px] text-green-500 font-semibold uppercase mt-1">Gerente Geral</p>
+                  </div>
+                  <div className="w-10 h-10 rounded-full bg-green-600/10 text-green-500 flex items-center justify-center">
+                    <MessageSquare size={18} />
+                  </div>
+                </a>
+              </div>
             </div>
 
             <button 
