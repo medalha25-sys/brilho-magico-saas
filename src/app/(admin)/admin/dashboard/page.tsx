@@ -23,6 +23,9 @@ export default function AdminDashboard() {
   const supabase = createClient();
   const [loading, setLoading] = useState(true);
   
+  // Níveis de acesso para faturamento
+  const [revenueVisible, setRevenueVisible] = useState(false);
+
   // States para estatísticas
   const [scheduledToday, setScheduledToday] = useState(0);
   const [revenueToday, setRevenueToday] = useState(0);
@@ -31,6 +34,15 @@ export default function AdminDashboard() {
 
   // Lista de próximos agendamentos
   const [upcomingAppointments, setUpcomingAppointments] = useState<Appointment[]>([]);
+
+  const handleRevealRevenue = () => {
+    const password = prompt("Digite a senha do Administrador para ver o faturamento:");
+    if (password === '123456') {
+      setRevenueVisible(true);
+    } else if (password !== null) {
+      alert("Senha incorreta!");
+    }
+  };
 
   const loadDashboardData = async () => {
     try {
@@ -41,9 +53,17 @@ export default function AdminDashboard() {
       // Pega o profile e tenant
       const { data: profile } = await supabase
         .from('profiles')
-        .select('tenant_id')
+        .select('tenant_id, role')
         .eq('id', user.id)
         .single();
+
+      if (profile) {
+        if (profile.role === 'ADMIN') {
+          setRevenueVisible(true);
+        } else {
+          setRevenueVisible(false); // Reseta para segurança caso troque de conta
+        }
+      }
 
       if (profile?.tenant_id) {
         const tenantId = profile.tenant_id;
@@ -166,15 +186,32 @@ export default function AdminDashboard() {
             </div>
             
             {/* Faturamento Hoje */}
-            <div className="bg-white dark:bg-gray-950 rounded-xl shadow-sm p-6 border border-gray-100 dark:border-gray-800 text-left">
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="text-gray-500 dark:text-gray-400 text-sm font-medium">Faturamento Hoje</h3>
-                <div className="p-2 bg-green-50 dark:bg-green-900/30 rounded-lg">
-                  <DollarSign className="h-5 w-5 text-green-600 dark:text-green-400" />
+            <div className="bg-white dark:bg-gray-950 rounded-xl shadow-sm p-6 border border-gray-100 dark:border-gray-800 text-left flex flex-col justify-between min-h-[140px]">
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <h3 className="text-gray-500 dark:text-gray-400 text-sm font-medium">Faturamento Hoje</h3>
+                  <div className="p-2 bg-green-50 dark:bg-green-900/30 rounded-lg">
+                    <DollarSign className="h-5 w-5 text-green-600 dark:text-green-400" />
+                  </div>
                 </div>
+                
+                {revenueVisible ? (
+                  <>
+                    <p className="text-3xl font-bold text-gray-900 dark:text-white">R$ {revenueToday.toFixed(2)}</p>
+                    <span className="text-gray-450 text-xs font-medium mt-1 block">Confirmados e Pendentes</span>
+                  </>
+                ) : (
+                  <div className="flex flex-col gap-2 mt-1">
+                    <p className="text-2xl font-bold text-gray-900 dark:text-white filter blur-md select-none">R$ 999.99</p>
+                    <button
+                      onClick={handleRevealRevenue}
+                      className="w-full flex items-center justify-center gap-1.5 py-1.5 px-3 rounded-xl bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 text-[10px] font-bold text-gray-700 dark:text-gray-300 transition-colors border border-gray-150 dark:border-gray-700"
+                    >
+                      🔑 Revelar Faturamento
+                    </button>
+                  </div>
+                )}
               </div>
-              <p className="text-3xl font-bold text-gray-900 dark:text-white">R$ {revenueToday.toFixed(2)}</p>
-              <span className="text-gray-405 text-xs font-medium">Confirmados e Pendentes</span>
             </div>
 
             {/* Novos Clientes */}
