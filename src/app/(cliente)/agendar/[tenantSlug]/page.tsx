@@ -161,10 +161,47 @@ export default function BookingPage({ params }: { params: Promise<{ tenantSlug: 
     setStep(1);
   };
 
-  // 2. Envia o agendamento real para o banco de dados Supabase
+  // Busca se o cliente já possui cadastro anterior ao digitar o WhatsApp
+  const handlePhoneBlur = async () => {
+    const cleanPhone = customerPhone.replace(/\D/g, '');
+    if (cleanPhone.length >= 10) {
+      try {
+        const { data: tenantData } = await supabase
+          .from('tenants')
+          .select('id')
+          .eq('slug', tenantSlug)
+          .single();
+
+        if (tenantData?.id) {
+          const { data: existingCust } = await supabase
+            .from('customers')
+            .select('name, vehicle_plate, cpf')
+            .eq('tenant_id', tenantData.id)
+            .eq('phone', customerPhone.trim())
+            .maybeSingle();
+
+          if (existingCust) {
+            if (!customerName && existingCust.name) setCustomerName(existingCust.name);
+            if (!vehiclePlate && existingCust.vehicle_plate) setVehiclePlate(existingCust.vehicle_plate);
+            if (!customerCpf && existingCust.cpf) {
+              setCustomerCpf(existingCust.cpf);
+              setWantCpf(true);
+            }
+          }
+        }
+      } catch (e) {
+        console.error(e);
+      }
+    }
+  };
+
+  // 2. Envia o agendamento e cadastra automaticamente o cliente no Supabase
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedDate || !selectedTime || !customerName || !customerPhone || !selectedService) return;
+    if (!selectedDate || !selectedTime || !customerName || !customerPhone || !vehiclePlate || !selectedService) {
+      alert("Por favor, preencha todos os campos obrigatórios (Nome, WhatsApp e Placa do Veículo).");
+      return;
+    }
 
     setLoading(true);
 
@@ -177,34 +214,71 @@ export default function BookingPage({ params }: { params: Promise<{ tenantSlug: 
         .single();
 
       if (!tenantData) {
-        console.warn("Lava-rápido não encontrado. Agendando em modo de teste.");
+        console.warn("Lava-rápido não encontrado.");
         setLoading(false);
         setStep(3);
         return;
       }
 
-      // Combina a data (yyyy-mm-dd) e a hora (hh:mm)
+      const cleanPhone = customerPhone.trim();
+      const cleanPlate = vehiclePlate.toUpperCase().trim();
+      const cleanCpf = wantCpf && customerCpf ? customerCpf.replace(/\D/g, '') : null;
+
+      // 1. Cadastra ou Atualiza o Cliente na tabela de Clientes (customers)
+      try {
+        const { data: existingCust } = await supabase
+          .from('customers')
+          .select('id')
+          .eq('tenant_id', tenantData.id)
+          .eq('phone', cleanPhone)
+          .maybeSingle();
+
+        if (existingCust?.id) {
+          await supabase
+            .from('customers')
+            .update({
+              name: customerName,
+              vehicle_plate: cleanPlate,
+              cpf: cleanCpf
+            })
+            .eq('id', existingCust.id);
+        } else {
+          await supabase
+            .from('customers')
+            .insert({
+              tenant_id: tenantData.id,
+              name: customerName,
+              phone: cleanPhone,
+              vehicle_plate: cleanPlate,
+              cpf: cleanCpf
+            });
+        }
+      } catch (custErr) {
+        console.warn("Aviso ao sincronizar cadastro de clientes:", custErr);
+      }
+
+      // 2. Combina a data (yyyy-mm-dd) e a hora (hh:mm)
       const [year, month, day] = selectedDate.split('-').map(Number);
       const [hour, minute] = selectedTime.split(':').map(Number);
       const scheduledAt = new Date(year, month - 1, day, hour, minute).toISOString();
 
-      // Salva na tabela appointments
+      // 3. Salva na tabela appointments
       const { error: insertError } = await supabase
         .from('appointments')
         .insert({
           tenant_id: tenantData.id,
           service_id: selectedService.id,
           customer_name: customerName,
-          customer_phone: customerPhone,
-          vehicle_plate: vehiclePlate,
-          customer_cpf: wantCpf ? customerCpf : null,
+          customer_phone: cleanPhone,
+          vehicle_plate: cleanPlate,
+          customer_cpf: cleanCpf,
           scheduled_at: scheduledAt,
           total_price: selectedService.price,
           status: 'PENDENTE'
         });
 
       if (insertError) {
-        alert("Erro ao salvar: " + insertError.message);
+        alert("Erro ao salvar agendamento: " + insertError.message);
         setLoading(false);
         return;
       }
@@ -494,11 +568,40 @@ export default function BookingPage({ params }: { params: Promise<{ tenantSlug: 
               )}
             </div>
 
-            {/* Dados Pessoais Obrigatórios */}
+            {/* Cadastro Obrigatório do Cliente */}
             <div className="space-y-4 mb-8">
-              <h3 className="text-xs font-bold text-neutral-400 uppercase tracking-wider">Seus Dados</h3>
+              <div className="flex flex-col gap-1 text-left">
+                <h3 className="text-xs font-bold text-neutral-300 uppercase tracking-wider flex items-center gap-1.5">
+                  <span className="w-2 h-2 rounded-full bg-green-500"></span>
+                  Cadastro do Cliente (Obrigatório)
+                </h3>
+                <p className="text-[11px] text-neutral-500">
+                  Informe seus dados para confirmar a reserva. Se já for cadastrado, preencha o WhatsApp para auto-completar.
+                </p>
+              </div>
               
+              {/* WhatsApp / Celular */}
               <div>
+                <label className="block text-[11px] font-semibold text-neutral-400 mb-1">WhatsApp / Celular *</label>
+                <div className="relative rounded-xl shadow-sm">
+                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                    <Phone className="h-4 w-4 text-neutral-500" />
+                  </div>
+                  <input
+                    type="tel"
+                    required
+                    placeholder="Ex: 38999999999"
+                    value={customerPhone}
+                    onChange={(e) => setCustomerPhone(e.target.value)}
+                    onBlur={handlePhoneBlur}
+                    className="block w-full pl-10 pr-3 py-3 border border-neutral-800 rounded-xl bg-neutral-950 text-neutral-100 placeholder-neutral-500 focus:outline-none focus:ring-1 focus:ring-green-500 focus:border-green-500 text-sm"
+                  />
+                </div>
+              </div>
+
+              {/* Nome Completo */}
+              <div>
+                <label className="block text-[11px] font-semibold text-neutral-400 mb-1">Nome Completo *</label>
                 <div className="relative rounded-xl shadow-sm">
                   <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
                     <User className="h-4 w-4 text-neutral-500" />
@@ -514,23 +617,9 @@ export default function BookingPage({ params }: { params: Promise<{ tenantSlug: 
                 </div>
               </div>
 
+              {/* Placa do Veículo */}
               <div>
-                <div className="relative rounded-xl shadow-sm">
-                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                    <Phone className="h-4 w-4 text-neutral-500" />
-                  </div>
-                  <input
-                    type="tel"
-                    required
-                    placeholder="Seu Celular / WhatsApp"
-                    value={customerPhone}
-                    onChange={(e) => setCustomerPhone(e.target.value)}
-                    className="block w-full pl-10 pr-3 py-3 border border-neutral-800 rounded-xl bg-neutral-950 text-neutral-100 placeholder-neutral-500 focus:outline-none focus:ring-1 focus:ring-green-500 focus:border-green-500 text-sm"
-                  />
-                </div>
-              </div>
-
-              <div>
+                <label className="block text-[11px] font-semibold text-neutral-400 mb-1">Placa do Veículo *</label>
                 <div className="relative rounded-xl shadow-sm">
                   <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
                     <Tag className="h-4 w-4 text-neutral-500" />
@@ -538,10 +627,10 @@ export default function BookingPage({ params }: { params: Promise<{ tenantSlug: 
                   <input
                     type="text"
                     required
-                    placeholder="Placa do Veículo"
+                    placeholder="Ex: ABC1D23"
                     value={vehiclePlate}
-                    onChange={(e) => setVehiclePlate(e.target.value)}
-                    className="block w-full pl-10 pr-3 py-3 border border-neutral-800 rounded-xl bg-neutral-950 text-neutral-100 placeholder-neutral-500 focus:outline-none focus:ring-1 focus:ring-green-500 focus:border-green-500 text-sm"
+                    onChange={(e) => setVehiclePlate(e.target.value.toUpperCase())}
+                    className="block w-full pl-10 pr-3 py-3 border border-neutral-800 rounded-xl bg-neutral-950 text-neutral-100 placeholder-neutral-500 focus:outline-none focus:ring-1 focus:ring-green-500 focus:border-green-500 text-sm font-mono uppercase"
                   />
                 </div>
               </div>
