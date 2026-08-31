@@ -5,7 +5,7 @@ if (process.env.NODE_ENV === "development") {
 }
 
 const nextConfig: NextConfig = {
-  optimizeFonts: false,
+  /* config options here */
 };
 
 export default nextConfig;
