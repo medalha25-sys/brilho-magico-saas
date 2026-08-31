@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { createClient } from '@/utils/supabase/client';
-import { Calendar, Phone, Tag, Trash2, Clock, CheckCircle2, XCircle, Search } from 'lucide-react';
+import { Calendar, Phone, Tag, Trash2, Clock, CheckCircle2, XCircle, Search, Printer } from 'lucide-react';
 
 interface Appointment {
   id: string;
@@ -16,7 +16,15 @@ interface Appointment {
   services?: {
     name: string;
     price: number;
+    duration_minutes?: number;
   };
+}
+
+interface TenantInfo {
+  name: string;
+  phone?: string;
+  address?: string;
+  cnpj?: string;
 }
 
 export default function AgendamentosPage() {
@@ -25,20 +33,44 @@ export default function AgendamentosPage() {
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('TODOS');
+  const [tenantInfo, setTenantInfo] = useState<TenantInfo | null>(null);
+  const [printApp, setPrintApp] = useState<Appointment | null>(null);
 
-  // Carrega os agendamentos do Supabase
+  // Carrega os agendamentos e dados da empresa do Supabase
   const loadAppointments = async () => {
     try {
       setLoading(true);
       const { data, error } = await supabase
         .from('appointments')
-        .select('*, services(name, price)')
+        .select('*, services(name, price, duration_minutes)')
         .order('scheduled_at', { ascending: false });
 
       if (error) {
         console.error("Erro ao carregar agendamentos:", error.message);
       } else if (data) {
         setAppointments(data as unknown as Appointment[]);
+      }
+
+      // Busca dados do tenant para o cabeçalho do cupom
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('tenant_id')
+          .eq('id', user.id)
+          .single();
+
+        if (profile?.tenant_id) {
+          const { data: tenant } = await supabase
+            .from('tenants')
+            .select('name, phone, address, cnpj')
+            .eq('id', profile.tenant_id)
+            .single();
+
+          if (tenant) {
+            setTenantInfo(tenant);
+          }
+        }
       }
     } catch (err) {
       console.error("Erro de rede:", err);
@@ -94,12 +126,21 @@ export default function AgendamentosPage() {
     }
   };
 
-  // Filtra agendamentos por nome, celular, placa ou serviço e status
+  // Dispara a impressão do Cupom Térmico (OS)
+  const handlePrintOS = (app: Appointment) => {
+    setPrintApp(app);
+    setTimeout(() => {
+      window.print();
+    }, 150);
+  };
+
+  // Filtra agendamentos por nome, celular, placa, cpf ou serviço e status
   const filteredAppointments = appointments.filter(app => {
     const query = filter.toLowerCase();
     const matchesSearch = 
       app.customer_name.toLowerCase().includes(query) ||
       app.customer_phone.includes(query) ||
+      (app.customer_cpf && app.customer_cpf.includes(query)) ||
       app.vehicle_plate.toLowerCase().includes(query) ||
       (app.services?.name || '').toLowerCase().includes(query);
 
@@ -149,11 +190,40 @@ export default function AgendamentosPage() {
 
   return (
     <div className="flex-1 p-4 md:p-8 overflow-y-auto">
+      {/* Estilos específicos para Impressora Térmica 80mm / 58mm */}
+      <style>{`
+        @media print {
+          body * {
+            visibility: hidden !important;
+          }
+          #print-receipt, #print-receipt * {
+            visibility: visible !important;
+          }
+          #print-receipt {
+            position: absolute !important;
+            left: 0 !important;
+            top: 0 !important;
+            width: 76mm !important;
+            padding: 2mm !important;
+            margin: 0 !important;
+            background: #ffffff !important;
+            color: #000000 !important;
+            font-family: 'Courier New', Courier, monospace !important;
+            font-size: 11px !important;
+            line-height: 1.25 !important;
+          }
+          @page {
+            size: auto;
+            margin: 0mm;
+          }
+        }
+      `}</style>
+
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between mb-8 gap-4">
         <div>
           <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Agendamentos</h1>
-          <p className="text-gray-500 dark:text-gray-400 text-sm mt-1">Gerencie e monitore a agenda do seu lava-rápido.</p>
+          <p className="text-gray-500 dark:text-gray-400 text-sm mt-1">Gerencie e imprima a ordem de serviço do seu lava-rápido.</p>
         </div>
         
         <button
@@ -173,7 +243,7 @@ export default function AgendamentosPage() {
           </div>
           <input
             type="text"
-            placeholder="Buscar por cliente, telefone, placa ou serviço..."
+            placeholder="Buscar por cliente, telefone, CPF, placa ou serviço..."
             value={filter}
             onChange={(e) => setFilter(e.target.value)}
             className="block w-full pl-10 pr-3 py-2.5 border border-gray-200 dark:border-gray-800 rounded-xl bg-white dark:bg-gray-950 text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-550 focus:outline-none focus:ring-1 focus:ring-blue-500 text-sm"
@@ -269,7 +339,16 @@ export default function AgendamentosPage() {
                     </td>
                     {/* Ações */}
                     <td className="px-6 py-4 whitespace-nowrap text-center text-sm font-medium">
-                      <div className="flex items-center justify-center gap-2">
+                      <div className="flex items-center justify-center gap-1.5">
+                        {/* Botão Imprimir OS (Cupom Fiscal) */}
+                        <button
+                          onClick={() => handlePrintOS(app)}
+                          className="p-1.5 rounded-lg text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-950/30 transition-colors"
+                          title="Imprimir Ordem de Serviço (Cupom Térmico)"
+                        >
+                          <Printer size={16} />
+                        </button>
+
                         {app.status === 'PENDENTE' && (
                           <button
                             onClick={() => updateStatus(app.id, 'CONFIRMADO')}
@@ -313,6 +392,84 @@ export default function AgendamentosPage() {
           </div>
         )}
       </div>
+
+      {/* Via de Impressão Térmica (Ordem de Serviço - 80mm / 58mm) */}
+      {printApp && (
+        <div id="print-receipt" className="hidden">
+          <div style={{ textAlign: 'center', fontWeight: 'bold', fontSize: '13px', textTransform: 'uppercase' }}>
+            {tenantInfo?.name || 'BRILHO MÁGICO'}
+          </div>
+          <div style={{ textAlign: 'center', fontSize: '10px', textTransform: 'uppercase', letterSpacing: '1px' }}>
+            Studio Automotivo
+          </div>
+          {tenantInfo?.address && (
+            <div style={{ textAlign: 'center', fontSize: '9px', marginTop: '2px' }}>
+              {tenantInfo.address}
+            </div>
+          )}
+          {tenantInfo?.cnpj && (
+            <div style={{ textAlign: 'center', fontSize: '9px' }}>
+              CNPJ: {tenantInfo.cnpj}
+            </div>
+          )}
+          {tenantInfo?.phone && (
+            <div style={{ textAlign: 'center', fontSize: '9px' }}>
+              Contato: {tenantInfo.phone}
+            </div>
+          )}
+
+          <div style={{ borderTop: '1px dashed #000', margin: '6px 0' }}></div>
+          
+          <div style={{ textAlign: 'center', fontWeight: 'bold', fontSize: '11px', textTransform: 'uppercase' }}>
+            ORDEM DE SERVIÇO (OS)
+          </div>
+          <div style={{ fontSize: '10px', marginTop: '4px' }}>
+            <div><strong>Nº OS:</strong> #{printApp.id.substring(0, 8).toUpperCase()}</div>
+            <div><strong>Data/Hora:</strong> {formatDateTime(printApp.scheduled_at)}</div>
+            <div><strong>Status:</strong> {printApp.status}</div>
+          </div>
+
+          <div style={{ borderTop: '1px dashed #000', margin: '6px 0' }}></div>
+
+          <div style={{ fontSize: '10px' }}>
+            <div><strong>CLIENTE:</strong> {printApp.customer_name}</div>
+            <div><strong>TELEFONE:</strong> {printApp.customer_phone}</div>
+            <div><strong>PLACA:</strong> {printApp.vehicle_plate.toUpperCase()}</div>
+            {printApp.customer_cpf && (
+              <div><strong>CPF NA NOTA:</strong> {printApp.customer_cpf.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, "$1.$2.$3-$4")}</div>
+            )}
+          </div>
+
+          <div style={{ borderTop: '1px dashed #000', margin: '6px 0' }}></div>
+
+          <div style={{ fontSize: '10px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 'bold' }}>
+              <span>DESCRIÇÃO</span>
+              <span>VALOR</span>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '2px' }}>
+              <span>{printApp.services?.name || 'Lavagem'}</span>
+              <span>R$ {Number(printApp.total_price).toFixed(2)}</span>
+            </div>
+          </div>
+
+          <div style={{ borderTop: '1px dashed #000', margin: '6px 0' }}></div>
+
+          <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 'bold', fontSize: '11px' }}>
+            <span>TOTAL A PAGAR:</span>
+            <span>R$ {Number(printApp.total_price).toFixed(2)}</span>
+          </div>
+
+          <div style={{ borderTop: '1px dashed #000', margin: '8px 0' }}></div>
+
+          <div style={{ textAlign: 'center', fontSize: '9px', textTransform: 'uppercase' }}>
+            Agradecemos a preferência!
+          </div>
+          <div style={{ textAlign: 'center', fontSize: '8px', color: '#555', marginTop: '4px' }}>
+            Kryon Systems - v1.0.0
+          </div>
+        </div>
+      )}
     </div>
   );
 }
