@@ -380,9 +380,14 @@ export default function BookingPage({ params }: { params: Promise<{ tenantSlug: 
               Fazer novo agendamento
             </button>
           </div>
-        )}
-
       </div>
+
+      {/* Footer com Endereço do Lava Rápido */}
+      <footer className="mt-6 text-center text-[11px] text-neutral-500 max-w-xs mx-auto leading-relaxed">
+        <p className="font-semibold text-neutral-400">📍 Endereço:</p>
+        <p>Avenida Florips Crispim, N 644 - Bairro Novo Panorama</p>
+        <p>Salinas - MG</p>
+      </footer>
     </div>
   );
 }
