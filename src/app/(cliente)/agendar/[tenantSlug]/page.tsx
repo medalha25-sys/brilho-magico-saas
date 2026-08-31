@@ -195,7 +195,7 @@ export default function BookingPage({ params }: { params: Promise<{ tenantSlug: 
 
       setLoading(false);
       setStep(3);
-    } catch (err: any) {
+    } catch {
       alert("Erro de conexão ao realizar agendamento.");
       setLoading(false);
     }

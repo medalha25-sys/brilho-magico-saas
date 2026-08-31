@@ -3,7 +3,7 @@
 import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { createClient } from '@/utils/supabase/client';
-import { Car, Lock, Mail, AlertCircle } from 'lucide-react';
+import { Lock, Mail, AlertCircle } from 'lucide-react';
 
 export default function LoginPage() {
   const router = useRouter();
@@ -19,7 +19,7 @@ export default function LoginPage() {
     setError(null);
 
     try {
-      const { data, error: loginError } = await supabase.auth.signInWithPassword({
+      const { error: loginError } = await supabase.auth.signInWithPassword({
         email,
         password,
       });
@@ -34,7 +34,7 @@ export default function LoginPage() {
 
       // Redireciona para o painel se logar com sucesso
       router.push('/admin/dashboard');
-    } catch (err: any) {
+    } catch {
       setError("Ocorreu um erro ao tentar fazer login.");
       setLoading(false);
     }
