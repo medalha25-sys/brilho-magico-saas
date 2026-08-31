@@ -1,7 +1,8 @@
 "use client";
 
-import React, { useState, use } from 'react';
+import React, { useState, useEffect, use } from 'react';
 import { Calendar, Car, Bike, Clock, Check, User, Phone, Tag, MessageSquare, ArrowLeft } from 'lucide-react';
+import { createClient } from '@/utils/supabase/client';
 
 interface Service {
   id: string;
@@ -11,19 +12,13 @@ interface Service {
   vehicleType: 'CARRO' | 'MOTO';
 }
 
-const SERVICES_MOCK: Service[] = [
-  { id: '1', name: 'Ducha Simples', price: 40.00, duration: 40, vehicleType: 'CARRO' },
-  { id: '2', name: 'Lavagem Completa', price: 80.00, duration: 60, vehicleType: 'CARRO' },
-  { id: '3', name: 'Higienização Interna', price: 150.00, duration: 120, vehicleType: 'CARRO' },
-  { id: '4', name: 'Ducha Simples', price: 30.00, duration: 30, vehicleType: 'MOTO' },
-  { id: '5', name: 'Lavagem Completa', price: 50.00, duration: 50, vehicleType: 'MOTO' },
-];
-
 const TIME_SLOTS_MOCK = ['08:00', '09:30', '11:00', '13:30', '15:00', '16:30'];
 
 export default function BookingPage({ params }: { params: Promise<{ tenantSlug: string }> }) {
   const resolvedParams = use(params);
-  const tenantSlug = resolvedParams.tenantSlug;
+  const tenantSlug = resolvedParams.slug || resolvedParams.tenantSlug; // Suporta múltiplos mapeamentos
+
+  const supabase = createClient();
 
   const [step, setStep] = useState<1 | 2 | 3>(1);
   const [vehicleType, setVehicleType] = useState<'CARRO' | 'MOTO' | null>(null);
@@ -36,6 +31,98 @@ export default function BookingPage({ params }: { params: Promise<{ tenantSlug: 
   const [customerPhone, setCustomerPhone] = useState('');
   const [vehiclePlate, setVehiclePlate] = useState('');
   const [loading, setLoading] = useState(false);
+
+  // Estados dinâmicos do Supabase
+  const [services, setServices] = useState<Service[]>([]);
+  const [bookedSlots, setBookedSlots] = useState<{ [key: string]: string[] }>({}); // key: 'yyyy-mm-dd', value: ['08:00', '09:30']
+  const [loadingData, setLoadingData] = useState(true);
+
+  // 1. Carrega dados dinâmicos do Supabase
+  useEffect(() => {
+    async function loadData() {
+      try {
+        setLoadingData(true);
+        // Busca o lava-rápido pelo slug (ex: wash-express)
+        const { data: tenantData } = await supabase
+          .from('tenants')
+          .select('id')
+          .eq('slug', tenantSlug)
+          .single();
+        
+        if (!tenantData) {
+          console.error("Lava-rápido não encontrado no banco.");
+          return;
+        }
+
+        // Busca os serviços ativos desse lava-rápido
+        const { data: servicesData } = await supabase
+          .from('services')
+          .select('*')
+          .eq('tenant_id', tenantData.id)
+          .eq('is_active', true);
+
+        if (servicesData && servicesData.length > 0) {
+          setServices(servicesData.map(s => ({
+            id: s.id,
+            name: s.name,
+            price: Number(s.price),
+            duration: s.duration_minutes,
+            vehicleType: s.vehicle_type
+          })));
+        } else {
+          // Fallback se não cadastrou serviços no banco ainda
+          setServices([
+            { id: '1', name: 'Ducha Simples', price: 40.00, duration: 40, vehicleType: 'CARRO' },
+            { id: '2', name: 'Lavagem Completa', price: 80.00, duration: 60, vehicleType: 'CARRO' },
+            { id: '3', name: 'Higienização Interna', price: 150.00, duration: 120, vehicleType: 'CARRO' },
+            { id: '4', name: 'Ducha Simples', price: 30.00, duration: 30, vehicleType: 'MOTO' },
+            { id: '5', name: 'Lavagem Completa', price: 50.00, duration: 50, vehicleType: 'MOTO' },
+          ]);
+        }
+
+        // Busca agendamentos dos próximos 7 dias para mapear horários bloqueados
+        const todayStr = new Date().toISOString().split('T')[0];
+        const nextWeek = new Date();
+        nextWeek.setDate(nextWeek.getDate() + 7);
+        const nextWeekStr = nextWeek.toISOString().split('T')[0];
+
+        const { data: appointmentsData } = await supabase
+          .from('appointments')
+          .select('scheduled_at')
+          .eq('tenant_id', tenantData.id)
+          .gte('scheduled_at', todayStr)
+          .lte('scheduled_at', nextWeekStr);
+
+        if (appointmentsData) {
+          const booked: { [key: string]: string[] } = {};
+          appointmentsData.forEach((app) => {
+            const dateObj = new Date(app.scheduled_at);
+            // Corrige para o timezone local do Brasil
+            const yyyy = dateObj.getFullYear();
+            const mm = String(dateObj.getMonth() + 1).padStart(2, '0');
+            const dd = String(dateObj.getDate()).padStart(2, '0');
+            const dateKey = `${yyyy}-${mm}-${dd}`;
+            
+            const hh = String(dateObj.getHours()).padStart(2, '0');
+            const min = String(dateObj.getMinutes()).padStart(2, '0');
+            const timeKey = `${hh}:${min}`;
+
+            if (!booked[dateKey]) {
+              booked[dateKey] = [];
+            }
+            booked[dateKey].push(timeKey);
+          });
+          setBookedSlots(booked);
+        }
+      } catch (err) {
+        console.error("Erro ao carregar banco de dados:", err);
+      } finally {
+        setLoadingData(false);
+      }
+    }
+
+    loadData();
+  }, [tenantSlug]);
 
   const handleVehicleSelect = (type: 'CARRO' | 'MOTO') => {
     setVehicleType(type);
@@ -52,33 +139,113 @@ export default function BookingPage({ params }: { params: Promise<{ tenantSlug: 
     setStep(1);
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  // 2. Envia o agendamento real para o banco de dados Supabase
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedDate || !selectedTime || !customerName || !customerPhone) return;
+    if (!selectedDate || !selectedTime || !customerName || !customerPhone || !selectedService) return;
 
     setLoading(true);
-    // Simula salvamento no banco de dados por 1.5s
-    setTimeout(() => {
+
+    try {
+      // Pega o ID do Tenant
+      const { data: tenantData } = await supabase
+        .from('tenants')
+        .select('id')
+        .eq('slug', tenantSlug)
+        .single();
+
+      if (!tenantData) {
+        alert("Erro: Lava-rápido não encontrado.");
+        setLoading(false);
+        return;
+      }
+
+      // Combina a data (yyyy-mm-dd) e a hora (hh:mm)
+      const [year, month, day] = selectedDate.split('-').map(Number);
+      const [hour, minute] = selectedTime.split(':').map(Number);
+      const scheduledAt = new Date(year, month - 1, day, hour, minute).toISOString();
+
+      // Salva na tabela appointments
+      const { error: insertError } = await supabase
+        .from('appointments')
+        .insert({
+          tenant_id: tenantData.id,
+          service_id: selectedService.id,
+          customer_name: customerName,
+          customer_phone: customerPhone,
+          vehicle_plate: vehiclePlate,
+          scheduled_at: scheduledAt,
+          total_price: selectedService.price,
+          status: 'PENDENTE'
+        });
+
+      if (insertError) {
+        alert("Erro ao salvar: " + insertError.message);
+        setLoading(false);
+        return;
+      }
+
+      // Atualiza os horários ocupados localmente sem recarregar a página toda
+      const updatedBooked = { ...bookedSlots };
+      if (!updatedBooked[selectedDate]) {
+        updatedBooked[selectedDate] = [];
+      }
+      updatedBooked[selectedDate].push(selectedTime);
+      setBookedSlots(updatedBooked);
+
       setLoading(false);
       setStep(3);
-    }, 1500);
+    } catch (err: any) {
+      alert("Erro de conexão ao realizar agendamento.");
+      setLoading(false);
+    }
   };
 
-  const filteredServices = SERVICES_MOCK.filter(s => s.vehicleType === vehicleType);
-
-  // Formata o texto para enviar no WhatsApp
+  // 3. Monta o link para chamar o WhatsApp pré-formatado
   const getWhatsAppMessage = (num: string) => {
+    const formattedDate = selectedDate.split('-').reverse().join('/');
     const text = `Olá! Gostaria de confirmar meu agendamento na Brilho Mágico.
     
 *Detalhes do Agendamento:*
 - *Cliente:* ${customerName}
-- *Veículo:* ${vehicleType === 'CARRO' ? 'Carro' : 'Moto'} (${vehiclePlate || 'Não informada'})
+- *Veículo:* ${vehicleType === 'CARRO' ? '🚗 Carro' : '🏍️ Moto'} (${vehiclePlate.toUpperCase()})
 - *Serviço:* ${selectedService?.name}
-- *Data/Hora:* ${selectedDate} às ${selectedTime}
+- *Data/Hora:* ${formattedDate} às ${selectedTime}
 - *Valor:* R$ ${selectedService?.price.toFixed(2)}`;
 
     return `https://wa.me/${num}?text=${encodeURIComponent(text)}`;
   };
+
+  // 4. Lógica do Calendário Semanal
+  const getNext7Days = () => {
+    const days = [];
+    const weekdays = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
+    
+    for (let i = 0; i < 7; i++) {
+      const date = new Date();
+      date.setDate(date.getDate() + i);
+      
+      const yyyy = date.getFullYear();
+      const mm = String(date.getMonth() + 1).padStart(2, '0');
+      const dd = String(date.getDate()).padStart(2, '0');
+      const dateStr = `${yyyy}-${mm}-${dd}`;
+      
+      days.push({
+        dateStr,
+        dayNumber: date.getDate(),
+        weekday: weekdays[date.getDay()],
+        isSunday: date.getDay() === 0
+      });
+    }
+    return days;
+  };
+
+  const isDayFullyBooked = (dateStr: string) => {
+    const booked = bookedSlots[dateStr] || [];
+    return booked.length >= TIME_SLOTS_MOCK.length;
+  };
+
+  const filteredServices = services.filter(s => s.vehicleType === vehicleType);
 
   return (
     <div className="min-h-screen bg-neutral-950 text-neutral-100 flex flex-col justify-center py-12 px-4 sm:px-6 lg:px-8">
@@ -144,35 +311,39 @@ export default function BookingPage({ params }: { params: Promise<{ tenantSlug: 
                   <span className="w-5 h-5 rounded-full bg-green-500/10 text-green-500 flex items-center justify-center font-bold text-[10px]">2</span>
                   Escolha o serviço para {vehicleType.toLowerCase()}
                 </h2>
-                <div className="space-y-3">
-                  {filteredServices.map((service) => (
-                    <div
-                      key={service.id}
-                      onClick={() => setSelectedService(service)}
-                      className={`p-4 border rounded-2xl flex justify-between items-center cursor-pointer transition-all duration-200 ${
-                        selectedService?.id === service.id
-                          ? 'border-green-500 bg-green-500/5 text-white shadow-[0_0_15px_rgba(34,197,94,0.05)]'
-                          : 'border-neutral-800 bg-neutral-950 text-neutral-300 hover:border-neutral-700'
-                      }`}
-                    >
-                      <div className="flex-1 pr-4">
-                        <div className="flex items-center gap-2">
-                          <h3 className="font-semibold text-sm text-white">{service.name}</h3>
-                          {selectedService?.id === service.id && (
-                            <Check size={14} className="text-green-500" />
-                          )}
+                {loadingData ? (
+                  <div className="text-center py-4 text-xs text-neutral-500">Carregando serviços...</div>
+                ) : (
+                  <div className="space-y-3">
+                    {filteredServices.map((service) => (
+                      <div
+                        key={service.id}
+                        onClick={() => setSelectedService(service)}
+                        className={`p-4 border rounded-2xl flex justify-between items-center cursor-pointer transition-all duration-200 ${
+                          selectedService?.id === service.id
+                            ? 'border-green-500 bg-green-500/5 text-white shadow-[0_0_15px_rgba(34,197,94,0.05)]'
+                            : 'border-neutral-800 bg-neutral-950 text-neutral-300 hover:border-neutral-700'
+                        }`}
+                      >
+                        <div className="flex-1 pr-4">
+                          <div className="flex items-center gap-2">
+                            <h3 className="font-semibold text-sm text-white">{service.name}</h3>
+                            {selectedService?.id === service.id && (
+                              <Check size={14} className="text-green-500" />
+                            )}
+                          </div>
+                          <p className="text-xs text-neutral-500 mt-1 flex items-center gap-1">
+                            <Clock size={12} />
+                            Aproximadamente {service.duration} min
+                          </p>
                         </div>
-                        <p className="text-xs text-neutral-500 mt-1 flex items-center gap-1">
-                          <Clock size={12} />
-                          Aproximadamente {service.duration} min
-                        </p>
+                        <span className="font-bold text-sm text-green-500">
+                          R$ {service.price.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                        </span>
                       </div>
-                      <span className="font-bold text-sm text-green-500">
-                        R$ {service.price.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-                      </span>
-                    </div>
-                  ))}
-                </div>
+                    ))}
+                  </div>
+                )}
               </section>
             )}
 
@@ -189,20 +360,20 @@ export default function BookingPage({ params }: { params: Promise<{ tenantSlug: 
           </div>
         )}
 
-        {/* Passo 2: Formulário de Detalhes e Horário */}
+        {/* Passo 2: Formulário com Calendário Semanal Dinâmico */}
         {step === 2 && (
           <form onSubmit={handleSubmit}>
             <header className="flex items-center gap-4 mb-6">
               <button 
                 type="button"
                 onClick={handleBackStep}
-                className="p-2 rounded-lg bg-neutral-850 hover:bg-neutral-800 text-neutral-400 hover:text-white transition-colors"
+                className="p-2 rounded-lg bg-neutral-850 hover:bg-neutral-850 border border-neutral-800 text-neutral-400 hover:text-white transition-colors"
               >
                 <ArrowLeft size={18} />
               </button>
               <div>
                 <h1 className="text-lg font-bold text-white">Quase lá!</h1>
-                <p className="text-xs text-neutral-400">Complete as informações para agendar</p>
+                <p className="text-xs text-neutral-400">Selecione o horário e insira seus dados</p>
               </div>
             </header>
 
@@ -218,41 +389,85 @@ export default function BookingPage({ params }: { params: Promise<{ tenantSlug: 
               </span>
             </div>
 
-            {/* Data e Hora */}
+            {/* Calendário Semanal Dinâmico */}
             <div className="space-y-4 mb-6">
               <div>
                 <label className="block text-xs font-bold text-neutral-400 uppercase tracking-wider mb-2">Selecione o Dia</label>
-                <input
-                  type="date"
-                  required
-                  value={selectedDate}
-                  onChange={(e) => setSelectedDate(e.target.value)}
-                  className="w-full bg-neutral-950 border border-neutral-800 rounded-xl p-3 text-sm text-white focus:outline-none focus:ring-1 focus:ring-green-500 focus:border-green-500"
-                />
-              </div>
+                <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-none">
+                  {getNext7Days().map((day) => {
+                    const fullyBooked = isDayFullyBooked(day.dateStr);
+                    const isSelected = selectedDate === day.dateStr;
+                    const isSunday = day.isSunday;
 
-              <div>
-                <label className="block text-xs font-bold text-neutral-400 uppercase tracking-wider mb-2">Selecione o Horário</label>
-                <div className="grid grid-cols-3 gap-2">
-                  {TIME_SLOTS_MOCK.map((time) => (
-                    <button
-                      key={time}
-                      type="button"
-                      onClick={() => setSelectedTime(time)}
-                      className={`py-2 px-3 border rounded-xl text-center text-xs font-semibold transition-all ${
-                        selectedTime === time
-                          ? 'border-green-500 bg-green-500/10 text-green-500'
-                          : 'border-neutral-800 bg-neutral-950 text-neutral-400 hover:border-neutral-700'
-                      }`}
-                    >
-                      {time}
-                    </button>
-                  ))}
+                    let btnClasses = "border-neutral-855 bg-neutral-950 text-neutral-400 hover:border-neutral-700";
+                    if (isSelected) {
+                      btnClasses = "border-green-500 bg-green-500/10 text-green-500 shadow-[0_0_10px_rgba(34,197,94,0.15)]";
+                    } else if (isSunday) {
+                      btnClasses = "border-neutral-900/60 bg-neutral-950/40 text-neutral-700 cursor-not-allowed";
+                    } else if (fullyBooked) {
+                      btnClasses = "border-red-500/20 bg-red-500/5 text-red-500 cursor-not-allowed";
+                    }
+
+                    return (
+                      <button
+                        key={day.dateStr}
+                        type="button"
+                        disabled={isSunday || fullyBooked}
+                        onClick={() => {
+                          setSelectedDate(day.dateStr);
+                          setSelectedTime(''); // Reseta o horário selecionado
+                        }}
+                        className={`flex flex-col items-center justify-center min-w-[62px] py-2 px-1 rounded-xl border transition-all duration-200 ${btnClasses}`}
+                      >
+                        <span className="text-[9px] uppercase font-bold tracking-wider">{day.weekday}</span>
+                        <span className="text-sm font-bold mt-0.5">{day.dayNumber}</span>
+                        {fullyBooked && !isSunday && (
+                          <span className="text-[7px] text-red-500 font-bold uppercase mt-1">Lotado</span>
+                        )}
+                        {isSunday && (
+                          <span className="text-[7px] text-neutral-600 font-bold uppercase mt-1">Fechado</span>
+                        )}
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
+
+              {/* Grid de Horários */}
+              {selectedDate && (
+                <div>
+                  <label className="block text-xs font-bold text-neutral-400 uppercase tracking-wider mb-2">Selecione o Horário</label>
+                  <div className="grid grid-cols-3 gap-2">
+                    {TIME_SLOTS_MOCK.map((time) => {
+                      const isBooked = (bookedSlots[selectedDate] || []).includes(time);
+                      const isSelected = selectedTime === time;
+
+                      let timeClasses = "border-neutral-855 bg-neutral-950 text-neutral-400 hover:border-neutral-700";
+                      if (isSelected) {
+                        timeClasses = "border-green-500 bg-green-500/10 text-green-500 shadow-[0_0_10px_rgba(34,197,94,0.15)]";
+                      } else if (isBooked) {
+                        timeClasses = "border-red-500/15 bg-neutral-950 text-red-500/50 cursor-not-allowed line-through";
+                      }
+
+                      return (
+                        <button
+                          key={time}
+                          type="button"
+                          disabled={isBooked}
+                          onClick={() => setSelectedTime(time)}
+                          className={`py-2 px-2 border rounded-xl text-center text-xs font-bold transition-all duration-200 ${timeClasses}`}
+                        >
+                          {time}
+                          {isBooked && <span className="block text-[7px] text-red-500/60 mt-0.5">Ocupado</span>}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
             </div>
 
-            {/* Dados Pessoais */}
+            {/* Dados Pessoais Obrigatórios */}
             <div className="space-y-4 mb-8">
               <h3 className="text-xs font-bold text-neutral-400 uppercase tracking-wider">Seus Dados</h3>
               
@@ -308,14 +523,14 @@ export default function BookingPage({ params }: { params: Promise<{ tenantSlug: 
             <button
               type="submit"
               disabled={loading || !selectedTime || !selectedDate}
-              className="w-full bg-green-600 hover:bg-green-500 disabled:opacity-50 text-neutral-950 font-bold py-4 rounded-2xl transition-colors duration-200 flex justify-center items-center gap-2"
+              className="w-full bg-green-600 hover:bg-green-500 disabled:opacity-50 text-neutral-950 font-bold py-4 rounded-2xl transition-colors duration-200 flex justify-center items-center gap-2 shadow-lg shadow-green-500/10"
             >
               {loading ? 'Confirmando...' : 'Confirmar Agendamento'}
             </button>
           </form>
         )}
 
-        {/* Passo 3: Tela Final de Sucesso com Atalhos de WhatsApp */}
+        {/* Passo 3: Tela Final de Sucesso com Atalhos de WhatsApp & Mapa */}
         {step === 3 && (
           <div className="text-center py-6 flex flex-col items-center">
             <div className="w-16 h-16 bg-green-500/10 text-green-500 rounded-full flex items-center justify-center mb-6">
@@ -326,12 +541,12 @@ export default function BookingPage({ params }: { params: Promise<{ tenantSlug: 
             <p className="text-green-500 text-xs font-semibold tracking-wider uppercase mt-1">Brilho Mágico agradece</p>
             
             <p className="text-neutral-400 text-sm mt-4 px-2 leading-relaxed">
-              Tudo pronto! Seu agendamento foi registrado com sucesso. 
-              Para confirmar ou tirar dúvidas, clique em um dos números abaixo para iniciar a conversa no WhatsApp:
+              Tudo pronto! Seu agendamento foi registrado no nosso banco de dados. 
+              Para dúvidas ou confirmação rápida, fale conosco pelo WhatsApp:
             </p>
 
             {/* Links de WhatsApp dos administradores */}
-            <div className="mt-8 space-y-3 w-full">
+            <div className="mt-6 space-y-3 w-full">
               <a
                 href={getWhatsAppMessage('5538999200580')}
                 target="_blank"
@@ -365,6 +580,39 @@ export default function BookingPage({ params }: { params: Promise<{ tenantSlug: 
               </a>
             </div>
 
+            {/* Como chegar / Localização Google Maps */}
+            <div className="mt-8 border-t border-neutral-800 pt-6 w-full text-left">
+              <h3 className="text-xs font-bold text-neutral-400 uppercase tracking-widest mb-3 flex items-center gap-1.5">
+                📍 Como chegar até nós
+              </h3>
+              <p className="text-[11px] text-neutral-400 mb-4 leading-relaxed">
+                Avenida Florips Crispim, N 644 - Bairro Novo Panorama, Salinas - MG
+              </p>
+              
+              {/* Iframe embutido estilizado em Modo Escuro */}
+              <div className="w-full h-40 rounded-xl overflow-hidden border border-neutral-800 bg-neutral-950 mb-3 shadow-inner">
+                <iframe
+                  title="Brilho Mágico Localização"
+                  width="100%"
+                  height="100%"
+                  frameBorder="0"
+                  style={{ border: 0, filter: 'invert(90%) hue-rotate(180deg)' }}
+                  src="https://maps.google.com/maps?q=Avenida%20Florips%20Crispim,%20644%20Novo%20Panorama,%20Salinas%20MG&t=&z=15&ie=UTF8&iwloc=&output=embed"
+                  allowFullScreen
+                ></iframe>
+              </div>
+
+              {/* Botão de rota direta por aplicativo */}
+              <a
+                href="https://www.google.com/maps/dir/?api=1&destination=Avenida+Florips+Crispim,+644+-+Novo+Panorama,+Salinas+-+MG"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="w-full flex items-center justify-center py-3 bg-neutral-850 hover:bg-neutral-800 border border-neutral-800 rounded-xl text-[11px] font-semibold text-white tracking-wide transition-colors duration-200 gap-1.5"
+              >
+                🗺️ Abrir Rota no Google Maps (GPS)
+              </a>
+            </div>
+
             <button 
               onClick={() => {
                 setStep(1);
@@ -376,11 +624,13 @@ export default function BookingPage({ params }: { params: Promise<{ tenantSlug: 
                 setCustomerPhone('');
                 setVehiclePlate('');
               }}
-              className="mt-8 text-sm text-neutral-500 hover:text-neutral-300 font-medium transition-colors"
+              className="mt-8 text-xs text-neutral-500 hover:text-neutral-300 font-medium transition-colors"
             >
               Fazer novo agendamento
             </button>
           </div>
+        )}
+
       </div>
 
       {/* Footer com Endereço do Lava Rápido */}
