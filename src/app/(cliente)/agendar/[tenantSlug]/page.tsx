@@ -16,7 +16,7 @@ const TIME_SLOTS_MOCK = ['08:00', '09:30', '11:00', '13:30', '15:00', '16:30'];
 
 export default function BookingPage({ params }: { params: Promise<{ tenantSlug: string }> }) {
   const resolvedParams = use(params);
-  const tenantSlug = resolvedParams.slug || resolvedParams.tenantSlug; // Suporta múltiplos mapeamentos
+  const tenantSlug = resolvedParams.tenantSlug;
 
   const supabase = createClient();
 
