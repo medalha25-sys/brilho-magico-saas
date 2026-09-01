@@ -238,49 +238,49 @@ export default function BookingPage({ params }: { params: Promise<{ tenantSlug: 
     setQueryResult(null);
 
     try {
-      const { data: tenantData } = await supabase
-        .from('tenants')
-        .select('id')
-        .eq('slug', tenantSlug)
-        .single();
+      const searchKey = clean.length >= 10 ? clean.slice(-10) : clean;
 
-      if (tenantData?.id) {
-        // 1. Busca cadastro do cliente
-        const { data: customerList } = await supabase
-          .from('customers')
-          .select('name, phone, points')
-          .eq('tenant_id', tenantData.id);
+      // 1. Busca cadastro do cliente (sem selecionar a coluna points para não falhar no Supabase)
+      const { data: customerList } = await supabase
+        .from('customers')
+        .select('name, phone, notes, vehicle_plate');
 
-        const customer = (customerList || []).find(c => {
-          const cClean = (c.phone || '').replace(/\D/g, '');
-          return cClean === clean || (clean.length >= 10 && cClean.endsWith(clean.slice(-10)));
+      const customer = (customerList || []).find(c => {
+        const cClean = (c.phone || '').replace(/\D/g, '');
+        const cKey = cClean.length >= 10 ? cClean.slice(-10) : cClean;
+        return cKey === searchKey;
+      });
+
+      // 2. Busca também os agendamentos finalizados deste telefone
+      const { data: finalizedApps } = await supabase
+        .from('appointments')
+        .select('customer_name, customer_phone, vehicle_plate')
+        .eq('status', 'FINALIZADO');
+
+      const finalMatches = (finalizedApps || []).filter(a => {
+        const aClean = (a.customer_phone || '').replace(/\D/g, '');
+        const aKey = aClean.length >= 10 ? aClean.slice(-10) : aClean;
+        return aKey === searchKey;
+      });
+
+      // Extrai resgates salvos
+      let redeemed = 0;
+      if (customer?.notes) {
+        const match = customer.notes.match(/\[RESGAT(?:E|ADO):\s*(\d+)\]/i);
+        if (match) redeemed = parseInt(match[1], 10) || 0;
+      }
+
+      if (customer || finalMatches.length > 0) {
+        const computedPts = Math.max(0, finalMatches.length - redeemed);
+        const resolvedName = customer?.name || finalMatches[0]?.customer_name || 'Cliente';
+
+        setQueryResult({
+          name: resolvedName,
+          points: computedPts
         });
-
-        // 2. Busca também os agendamentos finalizados deste telefone
-        const { data: finalizedApps } = await supabase
-          .from('appointments')
-          .select('customer_name, customer_phone')
-          .eq('tenant_id', tenantData.id)
-          .eq('status', 'FINALIZADO');
-
-        const finalMatches = (finalizedApps || []).filter(a => {
-          const aClean = (a.customer_phone || '').replace(/\D/g, '');
-          return aClean === clean || (clean.length >= 10 && aClean.endsWith(clean.slice(-10)));
-        });
-
-        if (customer || finalMatches.length > 0) {
-          const storedPts = Number(customer?.points || 0);
-          const computedPts = storedPts > 0 ? storedPts : finalMatches.length;
-          const resolvedName = customer?.name || finalMatches[0]?.customer_name || 'Cliente';
-
-          setQueryResult({
-            name: resolvedName,
-            points: computedPts
-          });
-        }
       }
     } catch (e) {
-      console.error(e);
+      console.error("Erro ao consultar pontos:", e);
     } finally {
       setQueryLoading(false);
     }
