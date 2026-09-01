@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useEffect, useState } from 'react';
-import { Calendar, DollarSign, Users, Clock, ArrowRight } from 'lucide-react';
+import { Calendar, DollarSign, Users, Clock, ArrowRight, Share2, Check } from 'lucide-react';
 import { createClient } from '@/utils/supabase/client';
 import Link from 'next/link';
 
@@ -31,6 +31,9 @@ export default function AdminDashboard() {
   const [revenueToday, setRevenueToday] = useState(0);
   const [totalCustomers, setTotalCustomers] = useState(0);
   const [avgDuration, setAvgDuration] = useState(0);
+  const [tenantSlug, setTenantSlug] = useState('wash-express');
+  const [tenantName, setTenantName] = useState('Brilho Mágico');
+  const [copiedLink, setCopiedLink] = useState(false);
 
   // Lista de próximos agendamentos
   const [upcomingAppointments, setUpcomingAppointments] = useState<Appointment[]>([]);
@@ -41,6 +44,27 @@ export default function AdminDashboard() {
       setRevenueVisible(true);
     } else if (password !== null) {
       alert("Senha incorreta!");
+    }
+  };
+
+  const handleShareStore = async () => {
+    const url = `https://brilho-magico-saas.vercel.app/agendar/${tenantSlug || 'wash-express'}`;
+    const text = `🚗 Agende a lavagem do seu carro ou moto na ${tenantName || 'Brilho Mágico'} 100% online sem filas:\n👉 ${url}`;
+
+    if (typeof navigator !== 'undefined' && navigator.share) {
+      try {
+        await navigator.share({
+          title: `${tenantName || 'Brilho Mágico'} - Agendamento Online`,
+          text: text,
+          url: url
+        });
+      } catch (err) {
+        console.log(err);
+      }
+    } else if (typeof navigator !== 'undefined' && navigator.clipboard) {
+      navigator.clipboard.writeText(url);
+      setCopiedLink(true);
+      setTimeout(() => setCopiedLink(false), 2500);
     }
   };
 
@@ -67,6 +91,18 @@ export default function AdminDashboard() {
 
       if (profile?.tenant_id) {
         const tenantId = profile.tenant_id;
+
+        // Pega dados da loja
+        const { data: tenant } = await supabase
+          .from('tenants')
+          .select('slug, name')
+          .eq('id', tenantId)
+          .single();
+
+        if (tenant) {
+          setTenantSlug(tenant.slug || 'wash-express');
+          setTenantName(tenant.name || 'Brilho Mágico');
+        }
 
         // 1. Busca TODOS os agendamentos do tenant
         const { data: allAppointments } = await supabase
@@ -156,12 +192,23 @@ export default function AdminDashboard() {
           <p className="text-gray-500 dark:text-gray-400 text-sm mt-1">Acompanhe os resultados reais do seu lava-rápido hoje.</p>
         </div>
         
-        <button
-          onClick={loadDashboardData}
-          className="px-4 py-2 text-sm font-semibold rounded-xl bg-gray-150 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
-        >
-          🔄 Atualizar Painel
-        </button>
+        <div className="flex items-center gap-3">
+          <button
+            onClick={handleShareStore}
+            className="px-4 py-2 text-sm font-semibold rounded-xl bg-blue-600 hover:bg-blue-500 text-white flex items-center gap-2 shadow-sm shadow-blue-500/20 transition-colors"
+            title="Compartilhar link de agendamento com clientes"
+          >
+            {copiedLink ? <Check size={16} /> : <Share2 size={16} />}
+            <span>{copiedLink ? 'Link Copiado!' : 'Compartilhar Link'}</span>
+          </button>
+
+          <button
+            onClick={loadDashboardData}
+            className="px-4 py-2 text-sm font-semibold rounded-xl bg-gray-150 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
+          >
+            🔄 Atualizar Painel
+          </button>
+        </div>
       </div>
 
       {loading ? (
@@ -239,59 +286,52 @@ export default function AdminDashboard() {
             </div>
           </div>
 
-          {/* Tabela de Próximos Agendamentos */}
-          <div className="bg-white dark:bg-gray-950 rounded-xl shadow-sm border border-gray-100 dark:border-gray-800 overflow-hidden">
-            <div className="px-6 py-4 border-b border-gray-100 dark:border-gray-800 flex justify-between items-center">
-              <h2 className="text-lg font-semibold text-gray-900 dark:text-white">Próximos Agendamentos</h2>
-              <Link 
-                href="/admin/agendamentos" 
-                className="text-blue-600 dark:text-blue-400 text-sm font-semibold hover:text-blue-700 dark:hover:text-blue-300 flex items-center gap-1"
-              >
+          {/* Próximos Agendamentos */}
+          <div className="bg-white dark:bg-gray-950 rounded-xl shadow-sm border border-gray-100 dark:border-gray-800 p-6">
+            <div className="flex items-center justify-between mb-6">
+              <h2 className="text-lg font-bold text-gray-900 dark:text-white">Próximos Agendamentos</h2>
+              <Link href="/admin/agendamentos" className="text-sm font-semibold text-blue-600 dark:text-blue-400 hover:underline flex items-center gap-1">
                 Ver todos <ArrowRight size={14} />
               </Link>
             </div>
-            
+
             {upcomingAppointments.length === 0 ? (
-              <div className="p-12 text-center text-gray-500">
-                <Calendar className="w-12 h-12 mx-auto text-gray-300 mb-3" />
-                <p className="font-semibold text-gray-700 dark:text-gray-300">Nenhum agendamento futuro</p>
-                <p className="text-xs mt-1">Todos os agendamentos passados ou nenhum cadastrado.</p>
+              <div className="text-center py-8 text-gray-500">
+                <Calendar className="w-10 h-10 mx-auto text-gray-300 dark:text-gray-700 mb-2" />
+                <p className="font-semibold text-sm">Nenhum agendamento futuro</p>
+                <p className="text-xs text-gray-400 mt-0.5">Todos os agendamentos passados ou nenhum cadastrado.</p>
               </div>
             ) : (
               <div className="overflow-x-auto">
-                <table className="w-full text-left border-collapse">
-                  <thead>
-                    <tr className="bg-gray-50 dark:bg-gray-900/50 text-gray-500 dark:text-gray-400 text-xs uppercase tracking-wider">
-                      <th className="px-6 py-4 font-semibold">Cliente</th>
-                      <th className="px-6 py-4 font-semibold">Veículo / Placa</th>
-                      <th className="px-6 py-4 font-semibold">Serviço</th>
-                      <th className="px-6 py-4 font-semibold">Horário</th>
-                      <th className="px-6 py-4 font-semibold">Status</th>
+                <table className="min-w-full divide-y divide-gray-100 dark:divide-gray-850">
+                  <thead className="bg-gray-50 dark:bg-gray-900/50">
+                    <tr>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase">Cliente</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase">Veículo / Placa</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase">Serviço</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase">Horário</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase">Status</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
+                  <tbody className="divide-y divide-gray-100 dark:divide-gray-850">
                     {upcomingAppointments.map((app) => (
-                      <tr key={app.id} className="hover:bg-gray-50/50 dark:hover:bg-gray-900/10 transition-colors">
-                        <td className="px-6 py-4">
-                          <p className="font-semibold text-gray-900 dark:text-white">{app.customer_name}</p>
-                          <p className="text-xs text-gray-500 dark:text-gray-400">{app.customer_phone}</p>
+                      <tr key={app.id} className="hover:bg-gray-50/50 dark:hover:bg-gray-900/10">
+                        <td className="px-4 py-3 text-sm font-semibold text-gray-900 dark:text-white">
+                          <div>{app.customer_name}</div>
+                          <div className="text-xs text-gray-400 font-normal">{app.customer_phone}</div>
                         </td>
-                        <td className="px-6 py-4">
-                          <span className="px-2 py-0.5 rounded bg-gray-150 dark:bg-gray-800 text-gray-700 dark:text-gray-300 font-mono text-xs font-semibold">
-                            {app.vehicle_plate.toUpperCase()}
-                          </span>
+                        <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-300 font-mono font-semibold">
+                          {app.vehicle_plate}
                         </td>
-                        <td className="px-6 py-4 text-gray-700 dark:text-gray-350 text-sm font-semibold">{app.services?.name || 'Lavagem'}</td>
-                        <td className="px-6 py-4 text-gray-900 dark:text-white text-sm font-medium">
+                        <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-300">
+                          {app.services?.name || 'Lavagem'}
+                        </td>
+                        <td className="px-4 py-3 text-sm font-semibold text-blue-600 dark:text-blue-400">
                           {formatDateLabel(app.scheduled_at)} às {formatTime(app.scheduled_at)}
                         </td>
-                        <td className="px-6 py-4">
-                          <span className={`px-2.5 py-0.5 rounded-full text-xs font-bold ${
-                            app.status === 'CONFIRMADO'
-                              ? 'bg-green-50 dark:bg-green-950/20 text-green-700 dark:text-green-400'
-                              : 'bg-yellow-50 dark:bg-yellow-950/20 text-yellow-750 dark:text-yellow-400'
-                          }`}>
-                            {app.status === 'CONFIRMADO' ? 'Confirmado' : 'Pendente'}
+                        <td className="px-4 py-3 text-xs">
+                          <span className="px-2.5 py-1 rounded-full font-semibold bg-yellow-50 dark:bg-yellow-950/30 text-yellow-750 dark:text-yellow-400">
+                            {app.status}
                           </span>
                         </td>
                       </tr>

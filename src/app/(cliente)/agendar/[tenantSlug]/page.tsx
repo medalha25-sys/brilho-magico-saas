@@ -1,7 +1,20 @@
 "use client";
 
 import React, { useState, useEffect, use } from 'react';
-import { Calendar, Car, Bike, Clock, Check, User, Phone, Tag, MessageSquare, ArrowLeft, FileText } from 'lucide-react';
+import { 
+  Calendar, 
+  Car, 
+  Bike, 
+  Clock, 
+  Check, 
+  User, 
+  Phone, 
+  Tag, 
+  MessageSquare, 
+  ArrowLeft, 
+  FileText,
+  Share2
+} from 'lucide-react';
 import { createClient } from '@/utils/supabase/client';
 
 interface Service {
@@ -33,6 +46,7 @@ export default function BookingPage({ params }: { params: Promise<{ tenantSlug: 
   const [customerCpf, setCustomerCpf] = useState('');
   const [wantCpf, setWantCpf] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [copied, setCopied] = useState(false);
 
   // Estados dinâmicos do Supabase
   const [services, setServices] = useState<Service[]>([]);
@@ -89,10 +103,10 @@ export default function BookingPage({ params }: { params: Promise<{ tenantSlug: 
             name: s.name,
             price: Number(s.price),
             duration: s.duration_minutes,
-            vehicleType: s.vehicle_type
+            vehicleType: s.vehicle_type as 'CARRO' | 'MOTO'
           })));
         } else {
-          // Fallback se não cadastrou serviços no banco ainda
+          // Fallback se não cadastrou serviços ainda
           setServices([
             { id: '1', name: 'Ducha Simples', price: 40.00, duration: 40, vehicleType: 'CARRO' },
             { id: '2', name: 'Lavagem Completa', price: 80.00, duration: 60, vehicleType: 'CARRO' },
@@ -145,6 +159,46 @@ export default function BookingPage({ params }: { params: Promise<{ tenantSlug: 
 
     loadData();
   }, [tenantSlug]);
+
+  // Helpers de Compartilhamento
+  const getShareUrl = () => {
+    if (typeof window !== 'undefined') {
+      return window.location.href;
+    }
+    return `https://brilho-magico-saas.vercel.app/agendar/${tenantSlug}`;
+  };
+
+  const getShareText = () => {
+    const name = tenantInfo?.name || 'Brilho Mágico';
+    return `🚗 Olá! Agende a lavagem do seu carro ou moto na ${name} 100% online, sem filas e com rapidez:\n👉 ${getShareUrl()}`;
+  };
+
+  const handleNativeShare = async () => {
+    const text = getShareText();
+    const url = getShareUrl();
+    if (typeof navigator !== 'undefined' && navigator.share) {
+      try {
+        await navigator.share({
+          title: `${tenantInfo?.name || 'Brilho Mágico'} - Agendamento Online`,
+          text: text,
+          url: url
+        });
+      } catch (err) {
+        console.log('Compartilhamento cancelado:', err);
+      }
+    } else {
+      handleCopyLink();
+    }
+  };
+
+  const handleCopyLink = () => {
+    const url = getShareUrl();
+    if (typeof navigator !== 'undefined' && navigator.clipboard) {
+      navigator.clipboard.writeText(url);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2500);
+    }
+  };
 
   const handleVehicleSelect = (type: 'CARRO' | 'MOTO') => {
     setVehicleType(type);
@@ -352,6 +406,22 @@ export default function BookingPage({ params }: { params: Promise<{ tenantSlug: 
         {/* Passo 1: Seleção de Veículo e Serviço */}
         {step === 1 && (
           <div>
+            {/* Barra Superior com Botão de Compartilhar */}
+            <div className="flex items-center justify-between mb-4">
+              <span className="text-[11px] font-bold text-green-500 uppercase tracking-widest bg-green-500/10 px-2.5 py-1 rounded-full">
+                Agendamento Online
+              </span>
+              <button
+                type="button"
+                onClick={handleNativeShare}
+                className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-neutral-850 hover:bg-neutral-800 border border-neutral-750 text-xs font-semibold text-neutral-300 hover:text-white transition-colors"
+                title="Compartilhar aplicativo com amigos"
+              >
+                <Share2 size={12} className="text-green-500" />
+                <span>Indicar para Amigos</span>
+              </button>
+            </div>
+
             {/* Header com Identidade Visual Brilho Mágico */}
             <header className="text-center mb-8 flex flex-col items-center">
               <img 
@@ -464,18 +534,29 @@ export default function BookingPage({ params }: { params: Promise<{ tenantSlug: 
         {/* Passo 2: Formulário com Calendário Semanal Dinâmico */}
         {step === 2 && (
           <form onSubmit={handleSubmit}>
-            <header className="flex items-center gap-4 mb-6">
-              <button 
-                type="button"
-                onClick={handleBackStep}
-                className="p-2 rounded-lg bg-neutral-850 hover:bg-neutral-850 border border-neutral-800 text-neutral-400 hover:text-white transition-colors"
-              >
-                <ArrowLeft size={18} />
-              </button>
-              <div>
-                <h1 className="text-lg font-bold text-white">Quase lá!</h1>
-                <p className="text-xs text-neutral-400">Selecione o horário e insira seus dados</p>
+            <header className="flex items-center justify-between mb-6">
+              <div className="flex items-center gap-4">
+                <button 
+                  type="button"
+                  onClick={handleBackStep}
+                  className="p-2 rounded-lg bg-neutral-850 hover:bg-neutral-800 border border-neutral-800 text-neutral-400 hover:text-white transition-colors"
+                >
+                  <ArrowLeft size={18} />
+                </button>
+                <div>
+                  <h1 className="text-lg font-bold text-white">Quase lá!</h1>
+                  <p className="text-xs text-neutral-400">Selecione o horário e insira seus dados</p>
+                </div>
               </div>
+
+              <button
+                type="button"
+                onClick={handleNativeShare}
+                className="p-2 rounded-lg bg-neutral-850 hover:bg-neutral-800 border border-neutral-750 text-neutral-400 hover:text-white transition-colors"
+                title="Compartilhar aplicativo"
+              >
+                <Share2 size={16} className="text-green-500" />
+              </button>
             </header>
 
             {/* Serviço Selecionado Info */}
@@ -522,11 +603,12 @@ export default function BookingPage({ params }: { params: Promise<{ tenantSlug: 
                       >
                         <span className="text-[9px] uppercase font-bold tracking-wider">{day.weekday}</span>
                         <span className="text-sm font-bold mt-0.5">{day.dayNumber}</span>
-                        {fullyBooked && !isSunday && (
-                          <span className="text-[7px] text-red-500 font-bold uppercase mt-1">Lotado</span>
-                        )}
-                        {isSunday && (
-                          <span className="text-[7px] text-neutral-600 font-bold uppercase mt-1">Fechado</span>
+                        {isSunday ? (
+                          <span className="text-[8px] text-neutral-600 mt-1">Fechado</span>
+                        ) : fullyBooked ? (
+                          <span className="text-[8px] text-red-500 mt-1">Lotado</span>
+                        ) : (
+                          <span className="text-[8px] text-green-500 mt-1">Vagas</span>
                         )}
                       </button>
                     );
@@ -676,7 +758,7 @@ export default function BookingPage({ params }: { params: Promise<{ tenantSlug: 
           </form>
         )}
 
-        {/* Passo 3: Tela Final de Sucesso com Atalhos de WhatsApp & Mapa */}
+        {/* Passo 3: Tela Final de Sucesso com Atalhos de Compartilhamento, WhatsApp & Mapa */}
         {step === 3 && (
           <div className="text-center py-6 flex flex-col items-center">
             <div className="w-16 h-16 bg-green-500/10 text-green-500 rounded-full flex items-center justify-center mb-6">
@@ -687,8 +769,53 @@ export default function BookingPage({ params }: { params: Promise<{ tenantSlug: 
             <p className="text-green-500 text-xs font-semibold tracking-wider uppercase mt-1">Brilho Mágico agradece</p>
             
             <p className="text-neutral-400 text-sm mt-4 px-2 leading-relaxed">
-              Tudo pronto! Seu agendamento foi registrado com sucesso.
+              Tudo pronto! Seu agendamento foi registrado com sucesso na nossa fila.
             </p>
+
+            {/* Banner de Compartilhar com Amigos */}
+            <div className="mt-6 p-5 rounded-2xl bg-gradient-to-br from-green-950/40 via-neutral-900 to-neutral-950 border border-green-500/30 text-left w-full shadow-lg">
+              <div className="flex items-center gap-2 mb-1.5">
+                <span className="text-lg">✨</span>
+                <h3 className="text-xs font-bold text-white uppercase tracking-wider">
+                  Gostou da facilidade? Indique para Amigos!
+                </h3>
+              </div>
+              <p className="text-[11px] text-neutral-400 mb-4 leading-relaxed">
+                Compartilhe o aplicativo da {tenantInfo?.name || 'Brilho Mágico'} para que seus amigos e familiares também agendem sem filas.
+              </p>
+
+              <div className="flex flex-col sm:flex-row gap-2.5">
+                {/* Compartilhar no WhatsApp */}
+                <a
+                  href={`https://wa.me/?text=${encodeURIComponent(getShareText())}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex-1 flex items-center justify-center gap-2 py-3 px-3 rounded-xl bg-green-600 hover:bg-green-500 text-neutral-950 font-bold text-xs transition-colors shadow-md shadow-green-500/10"
+                >
+                  <MessageSquare size={15} />
+                  Enviar no WhatsApp
+                </a>
+
+                {/* Copiar Link / Outros Apps */}
+                <button
+                  type="button"
+                  onClick={handleNativeShare}
+                  className="flex items-center justify-center gap-2 py-3 px-4 rounded-xl bg-neutral-800 hover:bg-neutral-750 border border-neutral-700 text-white font-semibold text-xs transition-colors"
+                >
+                  {copied ? (
+                    <>
+                      <Check size={15} className="text-green-500" />
+                      <span>Link Copiado!</span>
+                    </>
+                  ) : (
+                    <>
+                      <Share2 size={15} className="text-neutral-300" />
+                      <span>Compartilhar</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
 
             {/* Como chegar / Localização Google Maps */}
             <div className="mt-8 border-t border-neutral-800 pt-6 w-full text-left">
@@ -786,14 +913,26 @@ export default function BookingPage({ params }: { params: Promise<{ tenantSlug: 
 
       </div>
 
+      {/* Botão de Compartilhar no Rodapé */}
+      <div className="mt-6 text-center">
+        <button
+          type="button"
+          onClick={handleNativeShare}
+          className="inline-flex items-center gap-1.5 text-xs text-neutral-400 hover:text-green-400 transition-colors py-1 px-3 rounded-full hover:bg-neutral-900"
+        >
+          <Share2 size={13} />
+          <span>{copied ? 'Link Copiado!' : 'Compartilhar aplicativo com amigos'}</span>
+        </button>
+      </div>
+
       {/* Footer com Endereço do Lava Rápido */}
-      <footer className="mt-6 text-center text-[11px] text-neutral-500 max-w-xs mx-auto leading-relaxed">
+      <footer className="mt-4 text-center text-[11px] text-neutral-500 max-w-xs mx-auto leading-relaxed">
         <p className="font-semibold text-neutral-400">📍 Endereço:</p>
         <p>{tenantInfo?.address || 'Avenida Florips Crispim, N 644 - Bairro Novo Panorama, Salinas - MG'}</p>
       </footer>
 
       {/* Footer Criado por Kryon Systems */}
-      <footer className="mt-8 mb-4 text-center text-[10px] text-neutral-600 flex flex-col items-center justify-center gap-1">
+      <footer className="mt-6 mb-4 text-center text-[10px] text-neutral-600 flex flex-col items-center justify-center gap-1">
         <div className="flex items-center justify-center gap-1.5">
           <span>Criado por</span>
           <a
