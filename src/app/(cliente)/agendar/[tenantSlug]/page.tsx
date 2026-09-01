@@ -568,8 +568,8 @@ export default function BookingPage({ params }: { params: Promise<{ tenantSlug: 
         {/* Passo 1: Seleção de Veículo e Serviço */}
         {step === 1 && (
           <div>
-            {/* Barra Superior com Consultar Pontos, Avaliar e Compartilhar */}
-            <div className="flex items-center justify-between mb-4 gap-2">
+            {/* Barra Superior com Consultar Pontos e Compartilhar */}
+            <div className="flex items-center justify-between mb-4">
               <button
                 type="button"
                 onClick={() => {
@@ -586,26 +586,12 @@ export default function BookingPage({ params }: { params: Promise<{ tenantSlug: 
 
               <button
                 type="button"
-                onClick={() => {
-                  setIsFeedbackOpen(true);
-                  setFeedbackSubmitted(false);
-                  setStarWarning(false);
-                }}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 text-xs font-bold text-amber-400 transition-colors"
-                title="Avaliar Atendimento"
-              >
-                <Star size={13} className="fill-amber-400 text-amber-400" />
-                <span>Avaliar</span>
-              </button>
-
-              <button
-                type="button"
                 onClick={handleNativeShare}
                 className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-neutral-850 hover:bg-neutral-800 border border-neutral-750 text-xs font-semibold text-neutral-300 hover:text-white transition-colors"
                 title="Compartilhar aplicativo com amigos"
               >
                 <Share2 size={12} className="text-green-500" />
-                <span>Indicar</span>
+                <span>Indicar Amigos</span>
               </button>
             </div>
 
@@ -715,6 +701,22 @@ export default function BookingPage({ params }: { params: Promise<{ tenantSlug: 
                 Ver Horários Disponíveis
               </button>
             )}
+
+            {/* Botão de Avaliar Atendimento na Parte Inferior do Card */}
+            <div className="mt-8 pt-5 border-t border-neutral-800/80 text-center">
+              <button
+                type="button"
+                onClick={() => {
+                  setIsFeedbackOpen(true);
+                  setFeedbackSubmitted(false);
+                  setStarWarning(false);
+                }}
+                className="w-full py-3.5 px-4 rounded-2xl bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 text-amber-400 font-bold text-xs flex items-center justify-center gap-2 transition-all hover:scale-[1.01] active:scale-95 shadow-sm"
+              >
+                <Star size={16} className="fill-amber-400 text-amber-400" />
+                <span>⭐ Avaliar Atendimento & Deixar Feedback</span>
+              </button>
+            </div>
           </div>
         )}
 
@@ -1203,21 +1205,6 @@ export default function BookingPage({ params }: { params: Promise<{ tenantSlug: 
 
       </div>
 
-      {/* Botão Flutuante Discreto: Avaliar Atendimento */}
-      <button
-        type="button"
-        onClick={() => {
-          setIsFeedbackOpen(true);
-          setFeedbackSubmitted(false);
-          setStarWarning(false);
-        }}
-        className="fixed bottom-5 right-5 z-40 px-3.5 py-2.5 rounded-full bg-gradient-to-r from-amber-500 to-yellow-500 hover:from-amber-400 hover:to-yellow-400 text-gray-950 font-bold text-xs shadow-xl shadow-amber-500/25 flex items-center gap-2 transition-all hover:scale-105 active:scale-95 border border-amber-300"
-        title="Avaliar Atendimento"
-      >
-        <Star size={15} className="fill-gray-950 text-gray-950" />
-        <span>Avaliar Atendimento</span>
-      </button>
-
       {/* Modal de Feedback & Avaliação com 5 Estrelas (Mínimo 50 Caracteres) */}
       {isFeedbackOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-xs">
@@ -1550,15 +1537,28 @@ export default function BookingPage({ params }: { params: Promise<{ tenantSlug: 
         </div>
       )}
 
-      {/* Botão de Compartilhar no Rodapé */}
-      <div className="mt-6 text-center">
+      {/* Botões de Ação no Rodapé */}
+      <div className="mt-6 flex flex-col sm:flex-row items-center justify-center gap-2.5">
+        <button
+          type="button"
+          onClick={() => {
+            setIsFeedbackOpen(true);
+            setFeedbackSubmitted(false);
+            setStarWarning(false);
+          }}
+          className="inline-flex items-center gap-1.5 text-xs font-semibold text-amber-400 hover:text-amber-300 transition-colors py-2 px-4 rounded-full bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 shadow-xs"
+        >
+          <Star size={13} className="fill-amber-400 text-amber-400" />
+          <span>⭐ Avaliar Atendimento</span>
+        </button>
+
         <button
           type="button"
           onClick={handleNativeShare}
-          className="inline-flex items-center gap-1.5 text-xs text-neutral-400 hover:text-green-400 transition-colors py-1 px-3 rounded-full hover:bg-neutral-900"
+          className="inline-flex items-center gap-1.5 text-xs text-neutral-400 hover:text-green-400 transition-colors py-2 px-4 rounded-full hover:bg-neutral-900 border border-neutral-800"
         >
           <Share2 size={13} />
-          <span>{copied ? 'Link Copiado!' : 'Compartilhar aplicativo com amigos'}</span>
+          <span>{copied ? 'Link Copiado!' : 'Compartilhar com amigos'}</span>
         </button>
       </div>
 
