@@ -115,27 +115,20 @@ export default function AdminLayoutClient({
           })}
         </nav>
 
-        {/* Botão de Suporte WhatsApp no Rodapé da Sidebar */}
-        <div className="p-3 border-t border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-950">
+        {/* Botão de Suporte no Rodapé da Sidebar */}
+        <div className="p-2 border-t border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-950 flex justify-center">
           <a
             href="https://wa.me/5538984257511"
             target="_blank"
             rel="noopener noreferrer"
-            title="Suporte Técnico WhatsApp: 09h às 18h"
-            className={`flex items-center gap-2.5 p-2.5 rounded-xl bg-green-50 dark:bg-green-950/20 border border-green-200 dark:border-green-800 hover:bg-green-100 dark:hover:bg-green-950/40 transition-colors text-left ${
-              collapsed ? 'justify-center' : ''
+            title="Suporte: 09h às 18h (Seg a Sex)"
+            className={`inline-flex items-center gap-1.5 py-1.5 px-3 rounded-lg bg-green-500/10 hover:bg-green-500/20 border border-green-500/20 text-green-600 dark:text-green-400 text-xs font-semibold transition-all ${
+              collapsed ? 'p-2 justify-center' : 'w-full justify-center'
             }`}
           >
-            <MessageSquare size={16} className="shrink-0 text-green-600 dark:text-green-400" />
+            <MessageSquare size={13} className="shrink-0 text-green-600 dark:text-green-400" />
             {!collapsed && (
-              <div className="flex flex-col overflow-hidden">
-                <span className="text-xs font-bold text-green-750 dark:text-green-400 truncate">
-                  Suporte WhatsApp
-                </span>
-                <span className="text-[9px] text-gray-500 dark:text-gray-400 leading-tight truncate">
-                  09h às 18h (Seg a Sex)
-                </span>
-              </div>
+              <span className="text-[11px] font-bold">Suporte (09h às 18h)</span>
             )}
           </a>
         </div>
