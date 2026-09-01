@@ -332,6 +332,29 @@ export default function BookingPage({ params }: { params: Promise<{ tenantSlug: 
         console.warn("Aviso ao salvar avaliação no Supabase:", err);
       }
 
+      // Envia notificação instantânea em tempo real para o painel admin
+      try {
+        const channel = supabase.channel('brilho-magico-realtime');
+        channel.subscribe((status) => {
+          if (status === 'SUBSCRIBED') {
+            channel.send({
+              type: 'broadcast',
+              event: 'new-feedback',
+              payload: {
+                id: `fb-${Date.now()}`,
+                customer_name: payload.customer_name,
+                customer_phone: payload.customer_phone,
+                comment: payload.comment,
+                rating: payload.rating,
+                created_at: new Date().toISOString()
+              }
+            });
+          }
+        });
+      } catch (rtErr) {
+        console.warn("Aviso ao transmitir feedback em tempo real:", rtErr);
+      }
+
       setFeedbackSubmitted(true);
     } catch (err) {
       console.error("Erro ao enviar avaliação:", err);
@@ -506,6 +529,31 @@ export default function BookingPage({ params }: { params: Promise<{ tenantSlug: 
       }
       updatedBooked[selectedDate].push(selectedTime);
       setBookedSlots(updatedBooked);
+
+      // Notifica em tempo real o painel administrativo
+      try {
+        const channel = supabase.channel('brilho-magico-realtime');
+        channel.subscribe((status) => {
+          if (status === 'SUBSCRIBED') {
+            channel.send({
+              type: 'broadcast',
+              event: 'new-appointment',
+              payload: {
+                id: `app-${Date.now()}`,
+                customer_name: customerName,
+                customer_phone: cleanPhone,
+                vehicle_plate: cleanPlate,
+                service_name: selectedService?.name || 'Lavagem',
+                scheduled_at: scheduledAt,
+                total_price: selectedService?.price || 0,
+                created_at: new Date().toISOString()
+              }
+            });
+          }
+        });
+      } catch (rtErr) {
+        console.warn("Aviso ao transmitir agendamento em tempo real:", rtErr);
+      }
 
       setLoading(false);
       setStep(3);

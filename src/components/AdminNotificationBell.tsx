@@ -442,6 +442,10 @@ export function AdminNotificationBell() {
                   badgeText: `${fb.rating} ⭐`
                 };
 
+                if (soundEnabled) {
+                  playNotificationSound('CHIME');
+                }
+
                 setActiveToast(newNotif);
                 setTimeout(() => setActiveToast(null), 7000);
 
@@ -455,10 +459,74 @@ export function AdminNotificationBell() {
       } catch (err) {
         console.warn("Erro no polling de notificações:", err);
       }
-    }, 10000);
+    }, 8000);
 
-    return () => clearInterval(interval);
-  }, [soundEnabled, soundType]);
+    // 4. Inscrição em Tempo Real Instantânea (WebSockets Broadcast)
+    const channel = supabase.channel('brilho-magico-realtime')
+      .on('broadcast', { event: 'new-feedback' }, (response) => {
+        const fb = response.payload as { id?: string; customer_name?: string; comment?: string; rating?: number };
+        if (!fb) return;
+        const fid = fb.id || `fb-${Date.now()}`;
+        if (knownFeedbackIds.current.has(fid)) return;
+        knownFeedbackIds.current.add(fid);
+
+        const newNotif: NotificationItem = {
+          id: fid,
+          type: 'FEEDBACK',
+          title: `⭐ Nova Avaliação (${fb.rating || 5}/5 estrelas)`,
+          description: `"${(fb.comment || '').slice(0, 100)}" — ${fb.customer_name || 'Cliente'}`,
+          timestamp: new Date(),
+          read: false,
+          badgeText: `${fb.rating || 5} ⭐`
+        };
+
+        if (soundEnabled) {
+          playNotificationSound('CHIME');
+        }
+
+        setActiveToast(newNotif);
+        setTimeout(() => setActiveToast(null), 7000);
+
+        setNotifications(prev => [newNotif, ...prev]);
+      })
+      .on('broadcast', { event: 'new-appointment' }, (response) => {
+        const app = response.payload as { id?: string; customer_name?: string; service_name?: string; scheduled_at?: string; total_price?: number; vehicle_plate?: string };
+        if (!app) return;
+        const aid = app.id || `app-${Date.now()}`;
+        if (knownAppointmentIds.current.has(aid)) return;
+        knownAppointmentIds.current.add(aid);
+
+        const scheduledDate = app.scheduled_at ? new Date(app.scheduled_at) : new Date();
+        const timeStr = scheduledDate.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+        const dateStr = scheduledDate.toLocaleDateString('pt-BR');
+
+        const newNotif: NotificationItem = {
+          id: aid,
+          type: 'APPOINTMENT',
+          title: `🚗 Novo Agendamento: ${app.customer_name || 'Cliente'}`,
+          description: `${app.service_name || 'Lavagem'} • ${dateStr} às ${timeStr} • R$ ${Number(app.total_price || 0).toFixed(2)} (${app.vehicle_plate || 'Sem placa'})`,
+          timestamp: new Date(),
+          read: false,
+          link: '/admin/agendamentos',
+          badgeText: 'NOVO'
+        };
+
+        if (soundEnabled) {
+          playNotificationSound(soundType);
+        }
+
+        setActiveToast(newNotif);
+        setTimeout(() => setActiveToast(null), 7000);
+
+        setNotifications(prev => [newNotif, ...prev]);
+      })
+      .subscribe();
+
+    return () => {
+      clearInterval(interval);
+      supabase.removeChannel(channel);
+    };
+  }, [soundEnabled, soundType, supabase]);
 
   const unreadCount = notifications.filter(n => !n.read).length;
 
