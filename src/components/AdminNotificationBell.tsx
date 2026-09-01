@@ -11,10 +11,13 @@ import {
   VolumeX, 
   X, 
   Clock,
-  ExternalLink
+  ExternalLink,
+  Flame
 } from 'lucide-react';
 import { createClient } from '@/utils/supabase/client';
 import Link from 'next/link';
+
+export type SoundType = 'SIREN' | 'IFOOD' | 'CHIME';
 
 export interface NotificationItem {
   id: string;
@@ -27,8 +30,8 @@ export interface NotificationItem {
   badgeText?: string;
 }
 
-// Melodia de Notificação agradável e nítida gerada via Web Audio API (duração de ~3.5 segundos)
-export function playAppointmentChime() {
+// 1. SIRENE DE ALARME DE ALTA ATENÇÃO (Pulsante e Estridente - ~4.0 segundos)
+export function playSirenAlert() {
   if (typeof window === 'undefined') return;
   try {
     const AudioContextClass = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
@@ -39,43 +42,191 @@ export function playAppointmentChime() {
       ctx.resume();
     }
 
-    // Melodia de campainha suave de alta qualidade (~3.5 segundos)
-    const notes = [
-      { freq: 523.25, time: 0.0, dur: 0.4 },  // Dó 5
-      { freq: 659.25, time: 0.35, dur: 0.4 }, // Mi 5
-      { freq: 783.99, time: 0.7, dur: 0.4 },  // Sol 5
-      { freq: 1046.50, time: 1.05, dur: 0.8 },// Dó 6
-      // Segundo acorde de eco
-      { freq: 659.25, time: 2.0, dur: 0.35 }, // Mi 5
-      { freq: 783.99, time: 2.35, dur: 0.35 },// Sol 5
-      { freq: 1046.50, time: 2.7, dur: 0.8 }, // Dó 6
-    ];
+    const startTime = ctx.currentTime;
+    const totalDuration = 4.0; // 4 segundos de sirene enérgica
 
-    notes.forEach(note => {
-      const osc = ctx.createOscillator();
-      const gain = ctx.createGain();
+    // Oscilador 1: Onda Sawtooth com filtro para dar o efeito de sirene de emergência
+    const osc1 = ctx.createOscillator();
+    const filter = ctx.createBiquadFilter();
+    const gain1 = ctx.createGain();
 
-      osc.type = 'sine';
-      osc.frequency.setValueAtTime(note.freq, ctx.currentTime + note.time);
+    osc1.type = 'sawtooth';
+    filter.type = 'lowpass';
+    filter.frequency.setValueAtTime(2200, startTime);
 
-      gain.gain.setValueAtTime(0, ctx.currentTime + note.time);
-      gain.gain.linearRampToValueAtTime(0.25, ctx.currentTime + note.time + 0.05);
-      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + note.time + note.dur);
+    // Modulação de frequência: Sirene subindo e descendo por 4 ciclos em 4 segundos
+    const cycles = 4;
+    const cycleDuration = totalDuration / cycles;
+    for (let i = 0; i < cycles; i++) {
+      const cycleStart = startTime + (i * cycleDuration);
+      const cycleMid = cycleStart + (cycleDuration * 0.5);
+      const cycleEnd = cycleStart + cycleDuration;
 
-      osc.connect(gain);
-      gain.connect(ctx.destination);
+      osc1.frequency.setValueAtTime(650, cycleStart);
+      osc1.frequency.linearRampToValueAtTime(1380, cycleMid);
+      osc1.frequency.linearRampToValueAtTime(650, cycleEnd);
+    }
 
-      osc.start(ctx.currentTime + note.time);
-      osc.stop(ctx.currentTime + note.time + note.dur);
-    });
+    gain1.gain.setValueAtTime(0, startTime);
+    gain1.gain.linearRampToValueAtTime(0.35, startTime + 0.08);
+    gain1.gain.setValueAtTime(0.35, startTime + totalDuration - 0.2);
+    gain1.gain.linearRampToValueAtTime(0.001, startTime + totalDuration);
+
+    osc1.connect(filter);
+    filter.connect(gain1);
+    gain1.connect(ctx.destination);
+
+    osc1.start(startTime);
+    osc1.stop(startTime + totalDuration);
+
+    // Oscilador 2: Tom agudo senoidal de reforço em harmonia
+    const osc2 = ctx.createOscillator();
+    const gain2 = ctx.createGain();
+    osc2.type = 'sine';
+
+    for (let i = 0; i < cycles; i++) {
+      const cycleStart = startTime + (i * cycleDuration);
+      const cycleMid = cycleStart + (cycleDuration * 0.5);
+      const cycleEnd = cycleStart + cycleDuration;
+
+      osc2.frequency.setValueAtTime(850, cycleStart);
+      osc2.frequency.linearRampToValueAtTime(1650, cycleMid);
+      osc2.frequency.linearRampToValueAtTime(850, cycleEnd);
+    }
+
+    gain2.gain.setValueAtTime(0, startTime);
+    gain2.gain.linearRampToValueAtTime(0.25, startTime + 0.08);
+    gain2.gain.setValueAtTime(0.25, startTime + totalDuration - 0.2);
+    gain2.gain.linearRampToValueAtTime(0.001, startTime + totalDuration);
+
+    osc2.connect(gain2);
+    gain2.connect(ctx.destination);
+
+    osc2.start(startTime);
+    osc2.stop(startTime + totalDuration);
+
+    // 4 Pulsos de Bip agudo estridente para cortar o barulho de máquinas e compressores
+    for (let i = 0; i < cycles; i++) {
+      const beepTime = startTime + (i * cycleDuration);
+      const oscBeep = ctx.createOscillator();
+      const gainBeep = ctx.createGain();
+
+      oscBeep.type = 'square';
+      oscBeep.frequency.setValueAtTime(1760, beepTime); // Lá 6
+
+      gainBeep.gain.setValueAtTime(0.2, beepTime);
+      gainBeep.gain.exponentialRampToValueAtTime(0.001, beepTime + 0.12);
+
+      oscBeep.connect(gainBeep);
+      gainBeep.connect(ctx.destination);
+
+      oscBeep.start(beepTime);
+      oscBeep.stop(beepTime + 0.12);
+    }
 
     setTimeout(() => {
       if (ctx.state !== 'closed') {
         ctx.close().catch(() => {});
       }
+    }, (totalDuration + 0.5) * 1000);
+  } catch (err) {
+    console.warn("Aviso ao reproduzir sirene:", err);
+  }
+}
+
+// 2. ALARME ENÉRGICO DE PEDIDOS (Bips Duplos Rápidos - 3.8s)
+export function playIFoodAlert() {
+  if (typeof window === 'undefined') return;
+  try {
+    const AudioContextClass = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+    if (!AudioContextClass) return;
+    const ctx = new AudioContextClass();
+    if (ctx.state === 'suspended') ctx.resume();
+
+    const bursts = [0.0, 0.9, 1.8, 2.7];
+    bursts.forEach(t => {
+      // Tom 1
+      const osc1 = ctx.createOscillator();
+      const gain1 = ctx.createGain();
+      osc1.type = 'sine';
+      osc1.frequency.setValueAtTime(987.77, ctx.currentTime + t);
+      gain1.gain.setValueAtTime(0.4, ctx.currentTime + t);
+      gain1.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + t + 0.35);
+      osc1.connect(gain1);
+      gain1.connect(ctx.destination);
+      osc1.start(ctx.currentTime + t);
+      osc1.stop(ctx.currentTime + t + 0.35);
+
+      // Tom 2 mais agudo
+      const osc2 = ctx.createOscillator();
+      const gain2 = ctx.createGain();
+      osc2.type = 'sine';
+      osc2.frequency.setValueAtTime(1318.51, ctx.currentTime + t + 0.16);
+      gain2.gain.setValueAtTime(0.4, ctx.currentTime + t + 0.16);
+      gain2.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + t + 0.55);
+      osc2.connect(gain2);
+      gain2.connect(ctx.destination);
+      osc2.start(ctx.currentTime + t + 0.16);
+      osc2.stop(ctx.currentTime + t + 0.55);
+    });
+
+    setTimeout(() => {
+      if (ctx.state !== 'closed') ctx.close().catch(() => {});
+    }, 4000);
+  } catch (e) {
+    console.warn(e);
+  }
+}
+
+// 3. CAMPAINHA SUAVE TRADICIONAL (3.5s)
+export function playAppointmentChime() {
+  if (typeof window === 'undefined') return;
+  try {
+    const AudioContextClass = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+    if (!AudioContextClass) return;
+    const ctx = new AudioContextClass();
+    if (ctx.state === 'suspended') ctx.resume();
+
+    const notes = [
+      { freq: 523.25, time: 0.0, dur: 0.4 },
+      { freq: 659.25, time: 0.35, dur: 0.4 },
+      { freq: 783.99, time: 0.7, dur: 0.4 },
+      { freq: 1046.50, time: 1.05, dur: 0.8 },
+      { freq: 659.25, time: 2.0, dur: 0.35 },
+      { freq: 783.99, time: 2.35, dur: 0.35 },
+      { freq: 1046.50, time: 2.7, dur: 0.8 },
+    ];
+
+    notes.forEach(note => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(note.freq, ctx.currentTime + note.time);
+      gain.gain.setValueAtTime(0, ctx.currentTime + note.time);
+      gain.gain.linearRampToValueAtTime(0.25, ctx.currentTime + note.time + 0.05);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + note.time + note.dur);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start(ctx.currentTime + note.time);
+      osc.stop(ctx.currentTime + note.time + note.dur);
+    });
+
+    setTimeout(() => {
+      if (ctx.state !== 'closed') ctx.close().catch(() => {});
     }, 3600);
   } catch (err) {
     console.warn("Aviso ao reproduzir som de notificação:", err);
+  }
+}
+
+// Reproduz o som configurado
+export function playNotificationSound(soundType: SoundType = 'SIREN') {
+  if (soundType === 'SIREN') {
+    playSirenAlert();
+  } else if (soundType === 'IFOOD') {
+    playIFoodAlert();
+  } else {
+    playAppointmentChime();
   }
 }
 
@@ -84,11 +235,28 @@ export function AdminNotificationBell() {
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [isOpen, setIsOpen] = useState(false);
   const [soundEnabled, setSoundEnabled] = useState(true);
+  const [soundType, setSoundType] = useState<SoundType>(() => {
+    if (typeof window !== 'undefined') {
+      const savedSound = localStorage.getItem('admin_sound_type') as SoundType;
+      if (savedSound && ['SIREN', 'IFOOD', 'CHIME'].includes(savedSound)) {
+        return savedSound;
+      }
+    }
+    return 'SIREN';
+  });
   const [activeToast, setActiveToast] = useState<NotificationItem | null>(null);
   const knownAppointmentIds = useRef<Set<string>>(new Set());
   const knownFeedbackIds = useRef<Set<string>>(new Set());
   const isInitialLoad = useRef(true);
   const dropdownRef = useRef<HTMLDivElement>(null);
+
+  const handleSoundTypeChange = (type: SoundType) => {
+    setSoundType(type);
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('admin_sound_type', type);
+    }
+    playNotificationSound(type);
+  };
 
   // Fecha dropdown ao clicar fora
   useEffect(() => {
@@ -107,11 +275,11 @@ export function AdminNotificationBell() {
       {
         id: 'sys-update-3',
         type: 'SYSTEM',
-        title: '🚀 Nova Central de Notificações com Alerta Sonoro',
-        description: 'Agora o sistema emite um sinal sonoro de 3.5s a cada novo agendamento e avisa sobre avaliações e atualizações!',
+        title: '🚨 Alarme e Sirene Sonora para Agendamentos',
+        description: 'Agora o sistema dispara uma sirene de 4 segundos a cada nova lavagem marcada para chamar sua atenção total no balcão!',
         timestamp: new Date(),
         read: false,
-        badgeText: 'Novidade v1.4'
+        badgeText: 'Alarme Ativo'
       },
       {
         id: 'sys-update-2',
@@ -166,7 +334,7 @@ export function AdminNotificationBell() {
           });
         }
 
-        // 2. Busca feedbacks recentes (se a tabela existir)
+        // 2. Busca feedbacks recentes
         const feedbackNotifications: NotificationItem[] = [];
         try {
           const { data: recentFeedbacks } = await supabase
@@ -237,14 +405,14 @@ export function AdminNotificationBell() {
                 badgeText: 'NOVO'
               };
 
-              // Toca som se ativado (3.5 segundos)
+              // Toca sirene/alarme se ativado (4.0 segundos)
               if (soundEnabled) {
-                playAppointmentChime();
+                playNotificationSound(soundType);
               }
 
-              // Exibe Toast na tela por 6 segundos
+              // Exibe Toast na tela por 7 segundos
               setActiveToast(newNotif);
-              setTimeout(() => setActiveToast(null), 6000);
+              setTimeout(() => setActiveToast(null), 7000);
 
               setNotifications(prev => [newNotif, ...prev]);
             }
@@ -275,7 +443,7 @@ export function AdminNotificationBell() {
                 };
 
                 setActiveToast(newNotif);
-                setTimeout(() => setActiveToast(null), 6000);
+                setTimeout(() => setActiveToast(null), 7000);
 
                 setNotifications(prev => [newNotif, ...prev]);
               }
@@ -290,7 +458,7 @@ export function AdminNotificationBell() {
     }, 10000);
 
     return () => clearInterval(interval);
-  }, [soundEnabled]);
+  }, [soundEnabled, soundType]);
 
   const unreadCount = notifications.filter(n => !n.read).length;
 
@@ -347,7 +515,7 @@ export function AdminNotificationBell() {
                 onClick={() => {
                   setSoundEnabled(!soundEnabled);
                   if (!soundEnabled) {
-                    playAppointmentChime();
+                    playNotificationSound(soundType);
                   }
                 }}
                 className={`p-1.5 rounded-lg text-xs transition-colors ${
@@ -355,7 +523,7 @@ export function AdminNotificationBell() {
                     ? 'text-green-600 dark:text-green-400 hover:bg-green-50 dark:hover:bg-green-950/40' 
                     : 'text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'
                 }`}
-                title={soundEnabled ? "Som ativado (clique para testar ou desativar)" : "Som desativado (clique para ativar)"}
+                title={soundEnabled ? "Som ativado (clique para alternar)" : "Som desativado (clique para ativar)"}
               >
                 {soundEnabled ? <Volume2 size={16} /> : <VolumeX size={16} />}
               </button>
@@ -374,8 +542,52 @@ export function AdminNotificationBell() {
             </div>
           </div>
 
+          {/* Seletor de Tipo de Alarme / Sirene */}
+          <div className="p-3 bg-neutral-900/50 dark:bg-neutral-900 border-b border-gray-100 dark:border-gray-800">
+            <span className="text-[11px] font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider block mb-2">
+              Tipo de Sinal Sonoro:
+            </span>
+            <div className="grid grid-cols-3 gap-1.5">
+              <button
+                type="button"
+                onClick={() => handleSoundTypeChange('SIREN')}
+                className={`py-1.5 px-2 rounded-xl text-[11px] font-bold flex items-center justify-center gap-1 transition-all ${
+                  soundType === 'SIREN'
+                    ? 'bg-red-600 text-white shadow-md shadow-red-600/30 ring-1 ring-red-400'
+                    : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700'
+                }`}
+              >
+                <span>🚨 Sirene</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => handleSoundTypeChange('IFOOD')}
+                className={`py-1.5 px-2 rounded-xl text-[11px] font-bold flex items-center justify-center gap-1 transition-all ${
+                  soundType === 'IFOOD'
+                    ? 'bg-amber-600 text-white shadow-md shadow-amber-600/30 ring-1 ring-amber-400'
+                    : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700'
+                }`}
+              >
+                <span>🔊 Alarme</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => handleSoundTypeChange('CHIME')}
+                className={`py-1.5 px-2 rounded-xl text-[11px] font-bold flex items-center justify-center gap-1 transition-all ${
+                  soundType === 'CHIME'
+                    ? 'bg-blue-600 text-white shadow-md shadow-blue-600/30 ring-1 ring-blue-400'
+                    : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700'
+                }`}
+              >
+                <span>🔔 Chime</span>
+              </button>
+            </div>
+          </div>
+
           {/* Lista de Notificações */}
-          <div className="max-h-[380px] overflow-y-auto divide-y divide-gray-100 dark:divide-gray-800/60">
+          <div className="max-h-[350px] overflow-y-auto divide-y divide-gray-100 dark:divide-gray-800/60">
             {notifications.length === 0 ? (
               <div className="p-8 text-center text-xs text-gray-400 dark:text-gray-500">
                 Nenhuma notificação no momento.
@@ -453,15 +665,16 @@ export function AdminNotificationBell() {
 
           {/* Footer do Popover */}
           <div className="p-2.5 bg-gray-50 dark:bg-gray-900 border-t border-gray-100 dark:border-gray-800 flex items-center justify-between text-[11px]">
-            <span className="text-gray-500 dark:text-gray-400">
-              🔊 Som: {soundEnabled ? 'Ativado (3.5s)' : 'Desativado'}
+            <span className="text-gray-500 dark:text-gray-400 flex items-center gap-1">
+              <Flame size={13} className="text-red-500" />
+              <span>Sirene: 4.0s</span>
             </span>
             <button
               type="button"
-              onClick={playAppointmentChime}
-              className="font-bold text-green-600 dark:text-green-400 hover:underline"
+              onClick={() => playNotificationSound(soundType)}
+              className="font-bold text-red-600 dark:text-red-400 hover:underline flex items-center gap-1"
             >
-              Testar Som 🔔
+              <span>Testar {soundType === 'SIREN' ? 'Sirene 🚨' : soundType === 'IFOOD' ? 'Alarme 🔊' : 'Campainha 🔔'}</span>
             </button>
           </div>
         </div>
@@ -469,15 +682,15 @@ export function AdminNotificationBell() {
 
       {/* Banner Toast Flutuante em Tempo Real */}
       {activeToast && (
-        <div className="fixed top-5 right-5 z-50 max-w-sm w-full bg-white dark:bg-gray-900 border-2 border-green-500 shadow-2xl rounded-2xl p-4 animate-in slide-in-from-top-4 duration-300">
+        <div className="fixed top-5 right-5 z-50 max-w-sm w-full bg-white dark:bg-gray-900 border-2 border-red-500 shadow-2xl rounded-2xl p-4 animate-in slide-in-from-top-4 duration-300">
           <div className="flex items-start justify-between gap-3">
-            <div className="p-2 rounded-xl bg-green-500/10 text-green-500 shrink-0">
-              <Calendar size={20} />
+            <div className="p-2.5 rounded-xl bg-red-500/15 text-red-500 shrink-0 animate-bounce">
+              <Calendar size={22} />
             </div>
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2">
-                <span className="px-2 py-0.5 rounded-full bg-green-500 text-neutral-950 font-black text-[9px] uppercase tracking-wider animate-pulse">
-                  🔔 Novo Agendamento!
+                <span className="px-2 py-0.5 rounded-full bg-red-600 text-white font-black text-[9px] uppercase tracking-wider animate-pulse">
+                  🚨 NOVO AGENDAMENTO RECEBIDO!
                 </span>
               </div>
               <h4 className="text-xs font-bold text-gray-900 dark:text-white mt-1">
