@@ -19,7 +19,10 @@ import {
   Award,
   Sparkles,
   Info,
-  CheckCircle2
+  CheckCircle2,
+  Building2,
+  User,
+  Briefcase
 } from 'lucide-react';
 
 interface Customer {
@@ -27,6 +30,9 @@ interface Customer {
   name: string;
   phone: string;
   cpf?: string | null;
+  cnpj?: string | null;
+  contact_person?: string | null;
+  is_company?: boolean;
   vehicle_plate?: string | null;
   vehicle_model?: string | null;
   notes?: string | null;
@@ -39,15 +45,20 @@ export default function ClientesPage() {
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState('');
+  const [typeFilter, setTypeFilter] = useState<'TODOS' | 'PF' | 'PJ'>('TODOS');
   const [tenantId, setTenantId] = useState<string | null>(null);
   const [userRole, setUserRole] = useState<string>('GERENTE');
 
   // Estados do Modal de Cadastro / Edição
   const [isOpen, setIsOpen] = useState(false);
   const [editId, setEditId] = useState<string | null>(null);
-  const [name, setName] = useState('');
+  const [clientType, setClientType] = useState<'PF' | 'PJ'>('PF');
+  
+  // Campos PF / PJ
+  const [name, setName] = useState(''); // Nome do Cliente ou Razão Social
+  const [contactPerson, setContactPerson] = useState(''); // Responsável da Empresa
   const [phone, setPhone] = useState('');
-  const [cpf, setCpf] = useState('');
+  const [documentNumber, setDocumentNumber] = useState(''); // CPF ou CNPJ
   const [vehiclePlate, setVehiclePlate] = useState('');
   const [vehicleModel, setVehicleModel] = useState('');
   const [notes, setNotes] = useState('');
@@ -62,6 +73,19 @@ export default function ClientesPage() {
 
   // Modal de Regras de Fidelidade
   const [isRulesOpen, setIsRulesOpen] = useState(false);
+
+  // Formata CNPJ ou CPF
+  const formatDocument = (doc?: string | null) => {
+    if (!doc) return null;
+    const clean = doc.replace(/\D/g, '');
+    if (clean.length === 14) {
+      return clean.replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})$/, "$1.$2.$3/$4-$5");
+    }
+    if (clean.length === 11) {
+      return clean.replace(/^(\d{3})(\d{3})(\d{3})(\d{2})$/, "$1.$2.$3-$4");
+    }
+    return doc;
+  };
 
   // Carrega clientes do Supabase
   const loadCustomers = async () => {
@@ -120,8 +144,18 @@ export default function ClientesPage() {
             realPts = finalAppsCount;
             supabase.from('customers').update({ points: realPts }).eq('id', c.id).then();
           }
+
+          const isCompany = c.cpf && c.cpf.replace(/\D/g, '').length === 14 || (c.notes && c.notes.includes('[EMPRESA]'));
+          let contact = '';
+          if (c.notes && c.notes.includes('Resp: ')) {
+            const match = c.notes.match(/Resp:\s*([^\n;]+)/);
+            if (match) contact = match[1].trim();
+          }
+
           customerMap.set(clean, {
             ...c,
+            is_company: isCompany,
+            contact_person: contact,
             points: realPts
           });
         });
@@ -136,6 +170,8 @@ export default function ClientesPage() {
               name: app.customer_name,
               phone: app.customer_phone,
               cpf: app.customer_cpf || null,
+              is_company: false,
+              contact_person: null,
               vehicle_plate: app.vehicle_plate || null,
               vehicle_model: null,
               notes: null,
@@ -154,7 +190,6 @@ export default function ClientesPage() {
               points: finalAppsCount
             }).then();
           } else {
-            // Se o cliente já está no mapa mas não tem placa ou CPF preenchidos na tabela customers, completa com os dados do agendamento
             const existing = customerMap.get(clean)!;
             if (!existing.vehicle_plate && app.vehicle_plate) {
               existing.vehicle_plate = app.vehicle_plate;
@@ -182,11 +217,13 @@ export default function ClientesPage() {
   }, []);
 
   // Abre modal para cadastrar novo
-  const handleOpenAdd = () => {
+  const handleOpenAdd = (type: 'PF' | 'PJ' = 'PF') => {
     setEditId(null);
+    setClientType(type);
     setName('');
+    setContactPerson('');
     setPhone('');
-    setCpf('');
+    setDocumentNumber('');
     setVehiclePlate('');
     setVehicleModel('');
     setNotes('');
@@ -198,12 +235,20 @@ export default function ClientesPage() {
   // Abre modal para editar existente
   const handleOpenEdit = (c: Customer) => {
     setEditId(c.id);
+    const isComp = c.is_company || (c.cpf && c.cpf.replace(/\D/g, '').length === 14);
+    setClientType(isComp ? 'PJ' : 'PF');
     setName(c.name);
+    setContactPerson(c.contact_person || '');
     setPhone(c.phone);
-    setCpf(c.cpf || '');
+    setDocumentNumber(c.cpf || '');
     setVehiclePlate(c.vehicle_plate || '');
     setVehicleModel(c.vehicle_model || '');
-    setNotes(c.notes || '');
+    
+    // Limpa tags de notas se houver
+    let cleanNotes = c.notes || '';
+    cleanNotes = cleanNotes.replace(/\[EMPRESA\]/g, '').replace(/Resp:\s*[^\n;]+;?/g, '').trim();
+    setNotes(cleanNotes);
+    
     setPoints(c.points || 0);
     setModalError(null);
     setIsOpen(true);
@@ -238,7 +283,6 @@ export default function ClientesPage() {
         .update({ points: newPoints })
         .eq('id', selectedCustomer.id);
 
-      // Atualiza estado local
       setCustomers(prev => prev.map(c => c.id === selectedCustomer.id ? { ...c, points: newPoints } : c));
       setSelectedCustomer(prev => prev ? { ...prev, points: newPoints } : null);
       setRedeemSuccess(`🎉 ${prizeName} resgatado com sucesso! Saldo atualizado para ${newPoints} pontos.`);
@@ -271,36 +315,46 @@ export default function ClientesPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!name || !phone || !tenantId) {
-      setModalError("Nome e Telefone/WhatsApp são obrigatórios.");
+      setModalError(clientType === 'PJ' ? "Razão Social e Telefone são obrigatórios." : "Nome e Telefone/WhatsApp são obrigatórios.");
       return;
     }
 
     setSubmitting(true);
     setModalError(null);
 
+    // Constrói observações enriquecidas com metadata de empresa se aplicável
+    let finalNotes = notes || '';
+    if (clientType === 'PJ') {
+      const extraMeta = `[EMPRESA]${contactPerson ? ` Resp: ${contactPerson};` : ''}`;
+      finalNotes = finalNotes ? `${extraMeta} ${finalNotes}` : extraMeta;
+    }
+
+    const cleanDoc = documentNumber ? documentNumber.replace(/\D/g, '') : null;
+
     const payload = {
       tenant_id: tenantId,
-      name,
-      phone,
-      cpf: cpf ? cpf.replace(/\D/g, '') : null,
+      name: name.trim(),
+      phone: phone.trim(),
+      cpf: cleanDoc,
       vehicle_plate: vehiclePlate ? vehiclePlate.toUpperCase().trim() : null,
       vehicle_model: vehicleModel || null,
-      notes: notes || null,
+      notes: finalNotes || null,
       points: Number(points || 0)
     };
 
     try {
       if (editId) {
-        const { error: updErr } = await supabase
+        await supabase
           .from('customers')
           .update(payload)
           .eq('id', editId);
 
-        if (updErr) {
-          console.warn("Aviso ao atualizar tabela:", updErr.message);
-        }
-
-        setCustomers(prev => prev.map(c => c.id === editId ? { ...c, ...payload } : c));
+        setCustomers(prev => prev.map(c => c.id === editId ? { 
+          ...c, 
+          ...payload,
+          is_company: clientType === 'PJ',
+          contact_person: contactPerson
+        } : c));
         setIsOpen(false);
       } else {
         const { data: newCust, error: insErr } = await supabase
@@ -314,16 +368,22 @@ export default function ClientesPage() {
           const localNew: Customer = {
             id: 'temp-' + Date.now(),
             ...payload,
+            is_company: clientType === 'PJ',
+            contact_person: contactPerson,
             created_at: new Date().toISOString()
           };
           setCustomers(prev => [localNew, ...prev]);
         } else if (newCust) {
-          setCustomers(prev => [newCust, ...prev]);
+          setCustomers(prev => [{
+            ...newCust,
+            is_company: clientType === 'PJ',
+            contact_person: contactPerson
+          }, ...prev]);
         }
         setIsOpen(false);
       }
     } catch {
-      setModalError("Erro de conexão ao salvar o cliente.");
+      setModalError("Erro de conexão ao salvar o cadastro.");
     } finally {
       setSubmitting(false);
     }
@@ -331,7 +391,7 @@ export default function ClientesPage() {
 
   // Exclui o cliente
   const handleDelete = async (id: string, clientName: string) => {
-    if (!window.confirm(`Tem certeza que deseja remover o cliente "${clientName}"?`)) return;
+    if (!window.confirm(`Tem certeza que deseja remover o cadastro de "${clientName}"?`)) return;
 
     try {
       await supabase.from('customers').delete().eq('id', id);
@@ -341,16 +401,23 @@ export default function ClientesPage() {
     }
   };
 
-  // Filtra clientes por nome, celular, placa ou cpf
+  // Filtra clientes por nome, celular, placa, cpf ou tipo
   const filteredCustomers = customers.filter(c => {
     const query = filter.toLowerCase();
-    return (
+    const matchesQuery = 
       c.name.toLowerCase().includes(query) ||
       c.phone.includes(query) ||
       (c.cpf && c.cpf.includes(query)) ||
+      (c.contact_person && c.contact_person.toLowerCase().includes(query)) ||
       (c.vehicle_plate && c.vehicle_plate.toLowerCase().includes(query)) ||
-      (c.vehicle_model && c.vehicle_model.toLowerCase().includes(query))
-    );
+      (c.vehicle_model && c.vehicle_model.toLowerCase().includes(query));
+
+    const matchesType = 
+      typeFilter === 'TODOS' ? true :
+      typeFilter === 'PJ' ? c.is_company :
+      !c.is_company;
+
+    return matchesQuery && matchesType;
   });
 
   return (
@@ -359,14 +426,14 @@ export default function ClientesPage() {
       <div className="flex flex-col md:flex-row md:items-center justify-between mb-8 gap-4">
         <div>
           <h1 className="text-2xl font-bold text-gray-900 dark:text-white flex items-center gap-2">
-            <span>Clientes & Cartão Fidelidade</span>
+            <span>Clientes & Empresas</span>
           </h1>
           <p className="text-gray-500 dark:text-gray-400 text-sm mt-1">
-            Consulte a base de clientes, pontos acumulados e realize o resgate de brindes.
+            Cadastre clientes particulares, empresas conveniadas, frotas e consulte pontos de fidelidade.
           </p>
         </div>
         
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2.5">
           <button
             onClick={() => setIsRulesOpen(true)}
             className="px-3.5 py-2.5 text-sm font-semibold rounded-xl bg-gray-100 hover:bg-gray-200 dark:bg-gray-800 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 flex items-center gap-1.5 transition-colors border border-gray-200 dark:border-gray-700"
@@ -375,51 +442,95 @@ export default function ClientesPage() {
           </button>
 
           <button
-            onClick={handleOpenAdd}
+            onClick={() => handleOpenAdd('PJ')}
+            className="px-3.5 py-2.5 text-sm font-semibold rounded-xl bg-purple-600 hover:bg-purple-500 text-white flex items-center justify-center gap-1.5 shadow-md shadow-purple-500/10 transition-colors"
+            title="Cadastrar Empresa / Pessoa Jurídica / Frota"
+          >
+            <Building2 size={16} /> + Empresa / PJ
+          </button>
+
+          <button
+            onClick={() => handleOpenAdd('PF')}
             className="px-4 py-2.5 text-sm font-semibold rounded-xl bg-blue-600 hover:bg-blue-500 text-white flex items-center justify-center gap-1.5 shadow-md shadow-blue-500/10 transition-colors"
           >
-            <Plus size={16} /> Cadastrar Cliente
+            <Plus size={16} /> + Cliente Particular
           </button>
         </div>
       </div>
 
-      {/* Barra de Busca */}
-      <div className="mb-6">
-        <div className="relative rounded-xl shadow-sm max-w-lg">
+      {/* Filtros e Busca */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
+        {/* Barra de Busca */}
+        <div className="relative rounded-xl shadow-sm max-w-lg w-full">
           <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
             <Search className="h-4 w-4 text-gray-400" />
           </div>
           <input
             type="text"
-            placeholder="Buscar por nome, WhatsApp, CPF, placa ou modelo..."
+            placeholder="Buscar por nome, empresa, responsável, WhatsApp, CPF/CNPJ, placa..."
             value={filter}
             onChange={(e) => setFilter(e.target.value)}
             className="block w-full pl-10 pr-3 py-2.5 border border-gray-200 dark:border-gray-800 rounded-xl bg-white dark:bg-gray-950 text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-550 focus:outline-none focus:ring-1 focus:ring-blue-500 text-sm"
           />
         </div>
+
+        {/* Filtro por Tipo: Todos / PF / PJ */}
+        <div className="flex items-center gap-1.5 bg-gray-100 dark:bg-gray-900 p-1 rounded-xl border border-gray-200 dark:border-gray-800 self-start md:self-auto">
+          <button
+            onClick={() => setTypeFilter('TODOS')}
+            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+              typeFilter === 'TODOS'
+                ? 'bg-white dark:bg-gray-800 text-gray-900 dark:text-white shadow-xs'
+                : 'text-gray-500 hover:text-gray-900 dark:hover:text-white'
+            }`}
+          >
+            Todos ({customers.length})
+          </button>
+          <button
+            onClick={() => setTypeFilter('PF')}
+            className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1 transition-all ${
+              typeFilter === 'PF'
+                ? 'bg-white dark:bg-gray-800 text-blue-600 dark:text-blue-400 shadow-xs'
+                : 'text-gray-500 hover:text-gray-900 dark:hover:text-white'
+            }`}
+          >
+            <User size={13} /> Particulares ({customers.filter(c => !c.is_company).length})
+          </button>
+          <button
+            onClick={() => setTypeFilter('PJ')}
+            className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1 transition-all ${
+              typeFilter === 'PJ'
+                ? 'bg-white dark:bg-gray-800 text-purple-600 dark:text-purple-400 shadow-xs'
+                : 'text-gray-500 hover:text-gray-900 dark:hover:text-white'
+            }`}
+          >
+            <Building2 size={13} /> Empresas ({customers.filter(c => c.is_company).length})
+          </button>
+        </div>
       </div>
 
-      {/* Tabela de Clientes */}
+      {/* Tabela de Clientes & Empresas */}
       <div className="bg-white dark:bg-gray-950 rounded-xl shadow-sm border border-gray-100 dark:border-gray-800 overflow-hidden">
         {loading ? (
           <div className="flex flex-col items-center justify-center p-12 text-gray-500">
             <div className="w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mb-4" />
-            <p className="text-sm font-medium">Carregando clientes...</p>
+            <p className="text-sm font-medium">Carregando cadastros...</p>
           </div>
         ) : filteredCustomers.length === 0 ? (
           <div className="text-center p-12 text-gray-500">
             <Users className="w-12 h-12 mx-auto text-gray-300 dark:text-gray-700 mb-3" />
-            <p className="font-semibold text-gray-700 dark:text-gray-300">Nenhum cliente encontrado</p>
-            <p className="text-xs mt-1">Cadastre novos clientes clicando no botão acima.</p>
+            <p className="font-semibold text-gray-700 dark:text-gray-300">Nenhum cadastro encontrado</p>
+            <p className="text-xs mt-1">Cadastre novos clientes ou empresas clicando nos botões acima.</p>
           </div>
         ) : (
           <div className="overflow-x-auto">
             <table className="min-w-full divide-y divide-gray-100 dark:divide-gray-850">
               <thead className="bg-gray-50 dark:bg-gray-900/50">
                 <tr>
-                  <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Cliente</th>
-                  <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">WhatsApp</th>
-                  <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Placa / Veículo</th>
+                  <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Cliente / Razão Social</th>
+                  <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Tipo</th>
+                  <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">WhatsApp / Contato</th>
+                  <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Placa / Frotas</th>
                   <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Pontos Fidelidade</th>
                   <th className="px-6 py-4 text-center text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Resgate & Ações</th>
                 </tr>
@@ -429,19 +540,41 @@ export default function ClientesPage() {
                   const pts = c.points || 0;
                   const canRedeemWash = pts >= 20;
                   const canRedeemDucha = pts >= 10;
+                  const isCompany = c.is_company;
 
                   return (
                     <tr key={c.id} className="hover:bg-gray-50/50 dark:hover:bg-gray-900/10 transition-colors">
-                      {/* Nome */}
+                      {/* Nome / Razão Social */}
                       <td className="px-6 py-4 whitespace-nowrap">
                         <div className="flex flex-col text-left">
-                          <span className="font-semibold text-sm text-gray-900 dark:text-white">{c.name}</span>
+                          <span className="font-semibold text-sm text-gray-900 dark:text-white flex items-center gap-1.5">
+                            {c.name}
+                          </span>
+                          {c.contact_person && (
+                            <span className="text-[11px] text-purple-600 dark:text-purple-400 font-medium mt-0.5 flex items-center gap-1">
+                              <Briefcase size={11} /> Resp: {c.contact_person}
+                            </span>
+                          )}
                           {c.cpf && (
-                            <span className="text-[10px] text-gray-400 font-mono">
-                              CPF: {c.cpf.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, "$1.$2.$3-$4")}
+                            <span className="text-[10px] text-gray-400 font-mono mt-0.5">
+                              {c.cpf.replace(/\D/g, '').length === 14 ? 'CNPJ: ' : 'CPF: '}
+                              {formatDocument(c.cpf)}
                             </span>
                           )}
                         </div>
+                      </td>
+
+                      {/* Tipo */}
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        {isCompany ? (
+                          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold bg-purple-50 dark:bg-purple-950/40 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-800">
+                            <Building2 size={12} /> Empresa / PJ
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300">
+                            <User size={12} /> Particular
+                          </span>
+                        )}
                       </td>
 
                       {/* WhatsApp */}
@@ -456,7 +589,7 @@ export default function ClientesPage() {
                         </a>
                       </td>
 
-                      {/* Veículo / Placa */}
+                      {/* Veículo / Placa / Frotas */}
                       <td className="px-6 py-4 whitespace-nowrap">
                         <div className="flex flex-col gap-0.5 text-left">
                           {c.vehicle_plate && (
@@ -517,14 +650,14 @@ export default function ClientesPage() {
                           <button
                             onClick={() => handleOpenEdit(c)}
                             className="p-1.5 rounded-lg text-gray-500 hover:text-blue-600 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
-                            title="Editar Cliente"
+                            title="Editar Cadastro"
                           >
                             <Edit2 size={15} />
                           </button>
                           <button
                             onClick={() => handleDelete(c.id, c.name)}
                             className="p-1.5 rounded-lg text-gray-400 hover:text-red-500 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
-                            title="Excluir Cliente"
+                            title="Excluir Cadastro"
                           >
                             <Trash2 size={15} />
                           </button>
@@ -700,13 +833,13 @@ export default function ClientesPage() {
         </div>
       )}
 
-      {/* Modal de Cadastro / Edição de Cliente */}
+      {/* Modal de Cadastro / Edição de Cliente e Empresa */}
       {isOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
           <div className="w-full max-w-lg bg-white dark:bg-gray-950 border border-gray-150 dark:border-gray-800 rounded-2xl p-6 shadow-2xl animate-in fade-in zoom-in-95 duration-150">
-            <div className="flex items-center justify-between mb-6">
+            <div className="flex items-center justify-between mb-4">
               <h2 className="text-lg font-bold text-gray-900 dark:text-white">
-                {editId ? 'Editar Cliente' : 'Cadastrar Novo Cliente'}
+                {editId ? 'Editar Cadastro' : (clientType === 'PJ' ? 'Cadastrar Nova Empresa / PJ' : 'Cadastrar Novo Cliente Particular')}
               </h2>
               <button 
                 onClick={() => setIsOpen(false)}
@@ -716,6 +849,34 @@ export default function ClientesPage() {
               </button>
             </div>
 
+            {/* Alternador de Tipo: Particular (PF) ou Empresa (PJ) */}
+            {!editId && (
+              <div className="grid grid-cols-2 gap-2 p-1 bg-gray-100 dark:bg-gray-900 rounded-xl mb-5">
+                <button
+                  type="button"
+                  onClick={() => setClientType('PF')}
+                  className={`py-2 px-3 rounded-lg text-xs font-bold flex items-center justify-center gap-2 transition-all ${
+                    clientType === 'PF'
+                      ? 'bg-white dark:bg-gray-800 text-blue-600 dark:text-blue-400 shadow-xs'
+                      : 'text-gray-500 hover:text-gray-900 dark:hover:text-white'
+                  }`}
+                >
+                  <User size={15} /> Pessoa Física (Particular)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setClientType('PJ')}
+                  className={`py-2 px-3 rounded-lg text-xs font-bold flex items-center justify-center gap-2 transition-all ${
+                    clientType === 'PJ'
+                      ? 'bg-white dark:bg-gray-800 text-purple-600 dark:text-purple-400 shadow-xs'
+                      : 'text-gray-500 hover:text-gray-900 dark:hover:text-white'
+                  }`}
+                >
+                  <Building2 size={15} /> Empresa (PJ / Frotas)
+                </button>
+              </div>
+            )}
+
             {modalError && (
               <div className="mb-4 p-3 rounded-xl bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-800 text-xs text-red-800 dark:text-red-400 flex items-center gap-2">
                 <ShieldAlert size={14} className="shrink-0" />
@@ -724,23 +885,48 @@ export default function ClientesPage() {
             )}
 
             <form onSubmit={handleSubmit} className="space-y-4 text-left">
-              {/* Nome */}
+              {/* Nome ou Razão Social */}
               <div>
-                <label className="block text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1.5">Nome do Cliente *</label>
+                <label className="block text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1.5">
+                  {clientType === 'PJ' ? 'Razão Social / Nome da Empresa *' : 'Nome do Cliente Particular *'}
+                </label>
                 <input
                   type="text"
                   required
-                  placeholder="Ex: Carlos Ferreira"
+                  placeholder={clientType === 'PJ' ? 'Ex: Construtora Alvorada LTDA' : 'Ex: Carlos Ferreira'}
                   value={name}
                   onChange={(e) => setName(e.target.value)}
                   className="block w-full px-3 py-2.5 border border-gray-200 dark:border-gray-800 rounded-xl bg-white dark:bg-gray-900 text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
                 />
               </div>
 
+              {/* Se for PJ: Responsável da Empresa */}
+              {clientType === 'PJ' && (
+                <div>
+                  <label className="block text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1.5">
+                    Nome do Responsável / Gestor de Frota
+                  </label>
+                  <div className="relative rounded-xl shadow-sm">
+                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                      <Briefcase className="h-4 w-4 text-gray-400" />
+                    </div>
+                    <input
+                      type="text"
+                      placeholder="Ex: Marcelo Silva (Gerente)"
+                      value={contactPerson}
+                      onChange={(e) => setContactPerson(e.target.value)}
+                      className="block w-full pl-10 pr-3 py-2.5 border border-gray-200 dark:border-gray-800 rounded-xl bg-white dark:bg-gray-900 text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-1 focus:ring-purple-500"
+                    />
+                  </div>
+                </div>
+              )}
+
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {/* WhatsApp */}
                 <div>
-                  <label className="block text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1.5">WhatsApp / Celular *</label>
+                  <label className="block text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1.5">
+                    {clientType === 'PJ' ? 'Telefone / WhatsApp Comercial *' : 'WhatsApp / Celular *'}
+                  </label>
                   <div className="relative rounded-xl shadow-sm">
                     <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
                       <Phone className="h-4 w-4 text-gray-400" />
@@ -756,53 +942,59 @@ export default function ClientesPage() {
                   </div>
                 </div>
 
-                {/* CPF */}
+                {/* CPF ou CNPJ */}
                 <div>
-                  <label className="block text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1.5">CPF (Opcional)</label>
+                  <label className="block text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1.5">
+                    {clientType === 'PJ' ? 'CNPJ da Empresa' : 'CPF (Opcional)'}
+                  </label>
                   <div className="relative rounded-xl shadow-sm">
                     <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
                       <FileText className="h-4 w-4 text-gray-400" />
                     </div>
                     <input
                       type="text"
-                      placeholder="Apenas números"
-                      maxLength={11}
-                      value={cpf}
-                      onChange={(e) => setCpf(e.target.value.replace(/\D/g, ''))}
-                      className="block w-full pl-10 pr-3 py-2.5 border border-gray-200 dark:border-gray-800 rounded-xl bg-white dark:bg-gray-900 text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
+                      placeholder={clientType === 'PJ' ? '00.000.000/0001-00' : 'Apenas números'}
+                      maxLength={clientType === 'PJ' ? 18 : 11}
+                      value={documentNumber}
+                      onChange={(e) => setDocumentNumber(e.target.value)}
+                      className="block w-full pl-10 pr-3 py-2.5 border border-gray-200 dark:border-gray-800 rounded-xl bg-white dark:bg-gray-900 text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 font-mono"
                     />
                   </div>
                 </div>
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {/* Placa */}
+                {/* Placa / Frotas */}
                 <div>
-                  <label className="block text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1.5">Placa do Veículo</label>
+                  <label className="block text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1.5">
+                    {clientType === 'PJ' ? 'Placa Principal ou Frotas' : 'Placa do Veículo'}
+                  </label>
                   <div className="relative rounded-xl shadow-sm">
                     <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
                       <Tag className="h-4 w-4 text-gray-400" />
                     </div>
                     <input
                       type="text"
-                      placeholder="Ex: ABC1D23"
+                      placeholder={clientType === 'PJ' ? 'Ex: ABC1D23, GUW5I42...' : 'Ex: ABC1D23'}
                       value={vehiclePlate}
                       onChange={(e) => setVehiclePlate(e.target.value.toUpperCase())}
-                      className="block w-full pl-10 pr-3 py-2.5 border border-gray-200 dark:border-gray-800 rounded-xl bg-white dark:bg-gray-900 text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
+                      className="block w-full pl-10 pr-3 py-2.5 border border-gray-200 dark:border-gray-800 rounded-xl bg-white dark:bg-gray-900 text-gray-900 dark:text-white text-sm uppercase focus:outline-none focus:ring-1 focus:ring-blue-500"
                     />
                   </div>
                 </div>
 
-                {/* Modelo */}
+                {/* Modelo dos Veículos */}
                 <div>
-                  <label className="block text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1.5">Modelo do Veículo</label>
+                  <label className="block text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1.5">
+                    {clientType === 'PJ' ? 'Modelos da Frota' : 'Modelo do Veículo'}
+                  </label>
                   <div className="relative rounded-xl shadow-sm">
                     <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
                       <Car className="h-4 w-4 text-gray-400" />
                     </div>
                     <input
                       type="text"
-                      placeholder="Ex: Honda Civic Preto"
+                      placeholder={clientType === 'PJ' ? 'Ex: 4x Renault Master, 2x Strada' : 'Ex: Honda Civic Preto'}
                       value={vehicleModel}
                       onChange={(e) => setVehicleModel(e.target.value)}
                       className="block w-full pl-10 pr-3 py-2.5 border border-gray-200 dark:border-gray-800 rounded-xl bg-white dark:bg-gray-900 text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
@@ -828,12 +1020,14 @@ export default function ClientesPage() {
                 </div>
               </div>
 
-              {/* Observações */}
+              {/* Observações / Convênio */}
               <div>
-                <label className="block text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1.5">Observações ou Preferências</label>
+                <label className="block text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1.5">
+                  {clientType === 'PJ' ? 'Observações / Convênio / Faturamento Mensal' : 'Observações ou Preferências'}
+                </label>
                 <textarea
                   rows={2}
-                  placeholder="Ex: Cliente prefere cera líquida, cuidado com rodas..."
+                  placeholder={clientType === 'PJ' ? 'Ex: Convênio 15% de desconto, faturar quinzenalmente...' : 'Ex: Cliente prefere cera líquida, cuidado com rodas...'}
                   value={notes}
                   onChange={(e) => setNotes(e.target.value)}
                   className="block w-full px-3 py-2 border border-gray-200 dark:border-gray-800 rounded-xl bg-white dark:bg-gray-900 text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
@@ -841,7 +1035,7 @@ export default function ClientesPage() {
               </div>
 
               {/* Submit Buttons */}
-              <div className="flex items-center justify-end gap-3 pt-4">
+              <div className="flex items-center justify-end gap-3 pt-4 border-t border-gray-150 dark:border-gray-800">
                 <button
                   type="button"
                   onClick={() => setIsOpen(false)}
@@ -852,9 +1046,11 @@ export default function ClientesPage() {
                 <button
                   type="submit"
                   disabled={submitting}
-                  className="px-5 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white text-sm font-semibold flex items-center justify-center gap-1.5 shadow-md shadow-blue-500/10"
+                  className={`px-5 py-2 rounded-xl text-white text-sm font-semibold flex items-center justify-center gap-1.5 shadow-md transition-all ${
+                    clientType === 'PJ' ? 'bg-purple-600 hover:bg-purple-500 shadow-purple-500/20' : 'bg-blue-600 hover:bg-blue-500 shadow-blue-500/20'
+                  }`}
                 >
-                  {submitting ? 'Salvando...' : 'Salvar Cliente'}
+                  {submitting ? 'Salvando...' : (clientType === 'PJ' ? 'Salvar Empresa' : 'Salvar Cliente')}
                 </button>
               </div>
             </form>
