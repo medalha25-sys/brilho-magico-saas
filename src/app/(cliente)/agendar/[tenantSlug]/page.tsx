@@ -175,11 +175,11 @@ export default function BookingPage({ params }: { params: Promise<{ tenantSlug: 
             address: 'Avenida Florips Crispim, N 644 - Bairro Novo Panorama, Salinas MG'
           });
           setServices([
-            { id: '1', name: 'Ducha Simples', price: 40.00, duration: 40, vehicleType: 'CARRO' },
-            { id: '2', name: 'Lavagem Completa', price: 80.00, duration: 60, vehicleType: 'CARRO' },
-            { id: '3', name: 'Higienização Interna', price: 150.00, duration: 120, vehicleType: 'CARRO' },
-            { id: '4', name: 'Ducha Simples', price: 30.00, duration: 30, vehicleType: 'MOTO' },
-            { id: '5', name: 'Lavagem Completa', price: 50.00, duration: 50, vehicleType: 'MOTO' },
+            { id: '1', name: 'Limpeza Interna', price: 70.00, duration: 50, vehicleType: 'CARRO' },
+            { id: '2', name: 'Lavada Top', price: 150.00, duration: 90, vehicleType: 'CARRO' },
+            { id: '3', name: 'Lavada Mais Complexa', price: 300.00, duration: 150, vehicleType: 'CARRO' },
+            { id: '4', name: 'Ducha Simples Moto', price: 30.00, duration: 30, vehicleType: 'MOTO' },
+            { id: '5', name: 'Lavagem Completa Moto', price: 50.00, duration: 50, vehicleType: 'MOTO' },
           ]);
           setLoadingData(false);
           return;
@@ -825,33 +825,123 @@ export default function BookingPage({ params }: { params: Promise<{ tenantSlug: 
                   <div className="text-center py-4 text-xs text-neutral-500">Carregando serviços...</div>
                 ) : (
                   <div className="space-y-3">
-                    {filteredServices.map((service) => (
-                      <div
-                        key={service.id}
-                        onClick={() => setSelectedService(service)}
-                        className={`p-4 border rounded-2xl flex justify-between items-center cursor-pointer transition-all duration-200 ${
-                          selectedService?.id === service.id
-                            ? 'border-green-500 bg-green-500/5 text-white shadow-[0_0_15px_rgba(34,197,94,0.05)]'
-                            : 'border-neutral-800 bg-neutral-950 text-neutral-300 hover:border-neutral-700'
-                        }`}
-                      >
-                        <div className="flex-1 pr-4">
-                          <div className="flex items-center gap-2">
-                            <h3 className="font-semibold text-sm text-white">{service.name}</h3>
-                            {selectedService?.id === service.id && (
-                              <Check size={14} className="text-green-500" />
-                            )}
+                    {filteredServices.map((service) => {
+                      const lower = service.name.toLowerCase();
+                      const isComplexa = lower.includes('complexa');
+                      const isTop = lower.includes('top');
+                      const isInterna = lower.includes('interna') || lower.includes('limpeza');
+
+                      return (
+                        <div
+                          key={service.id}
+                          onClick={() => setSelectedService(service)}
+                          className={`p-4 sm:p-5 border rounded-2xl cursor-pointer transition-all duration-200 text-left relative overflow-hidden ${
+                            selectedService?.id === service.id
+                              ? 'border-green-500 bg-green-950/20 text-white shadow-[0_0_20px_rgba(34,197,94,0.1)] ring-1 ring-green-500/60'
+                              : 'border-neutral-800 bg-neutral-950 text-neutral-300 hover:border-neutral-700 hover:bg-neutral-900/60'
+                          }`}
+                        >
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="flex-1">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <h3 className="font-bold text-sm text-white">{service.name}</h3>
+                                {isComplexa && (
+                                  <span className="text-[10px] font-black px-2 py-0.5 rounded-full bg-purple-500/15 text-purple-400 border border-purple-500/30">
+                                    ✨ Completa Premium
+                                  </span>
+                                )}
+                                {isTop && (
+                                  <span className="text-[10px] font-black px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-400 border border-amber-500/30">
+                                    ⭐ Mais Popular
+                                  </span>
+                                )}
+                                {isInterna && (
+                                  <span className="text-[10px] font-black px-2 py-0.5 rounded-full bg-blue-500/15 text-blue-400 border border-blue-500/30">
+                                    🚗 Essencial
+                                  </span>
+                                )}
+                              </div>
+
+                              {/* Lista de Itens Inclusos */}
+                              {isInterna && (
+                                <ul className="mt-2 space-y-1 text-xs text-neutral-400">
+                                  <li className="flex items-center gap-1.5">
+                                    <span className="text-green-500 font-bold">✓</span> Aspiração interna e porta-malas
+                                  </li>
+                                  <li className="flex items-center gap-1.5">
+                                    <span className="text-green-500 font-bold">✓</span> Lavagem pintura e caixa de rodas
+                                  </li>
+                                  <li className="flex items-center gap-1.5">
+                                    <span className="text-green-500 font-bold">✓</span> Limpeza básica de vidros
+                                  </li>
+                                </ul>
+                              )}
+
+                              {isTop && (
+                                <ul className="mt-2 space-y-1 text-xs text-neutral-400">
+                                  <li className="flex items-center gap-1.5">
+                                    <span className="text-green-500 font-bold">✓</span> Lavagem básica
+                                  </li>
+                                  <li className="flex items-center gap-1.5">
+                                    <span className="text-green-500 font-bold">✓</span> Revitalização de plástico interna/externa
+                                  </li>
+                                  <li className="flex items-center gap-1.5">
+                                    <span className="text-green-500 font-bold">✓</span> Aplicação de verniz nas caixas de roda
+                                  </li>
+                                  <li className="flex items-center gap-1.5">
+                                    <span className="text-green-500 font-bold">✓</span> Aplicação de cera pintura
+                                  </li>
+                                </ul>
+                              )}
+
+                              {isComplexa && (
+                                <ul className="mt-2 space-y-1 text-xs text-neutral-400">
+                                  <li className="flex items-center gap-1.5">
+                                    <span className="text-green-500 font-bold">✓</span> Todos os itens da <strong>Lavada Top</strong>
+                                  </li>
+                                  <li className="flex items-center gap-1.5">
+                                    <span className="text-green-500 font-bold">✓</span> Lavagem por baixo
+                                  </li>
+                                  <li className="flex items-center gap-1.5">
+                                    <span className="text-green-500 font-bold">✓</span> Lavagem de motor
+                                  </li>
+                                  <li className="flex items-center gap-1.5">
+                                    <span className="text-green-500 font-bold">✓</span> Escovar bancos sem remoção
+                                  </li>
+                                  <li className="flex items-center gap-1.5">
+                                    <span className="text-green-500 font-bold">✓</span> Escovar carpete sem remoção
+                                  </li>
+                                </ul>
+                              )}
+
+                              <div className="mt-2.5 flex items-center gap-3 text-[11px] text-neutral-500 flex-wrap">
+                                <span className="flex items-center gap-1">
+                                  <Clock size={12} />
+                                  ~{service.duration} min
+                                </span>
+                                {(isInterna || isTop || isComplexa) && (
+                                  <span className="text-amber-400/90 font-medium">
+                                    * Obs: depende do estado do veículo
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+
+                            <div className="text-right shrink-0">
+                              <span className="text-[10px] text-neutral-400 block font-semibold">A partir de</span>
+                              <span className="font-black text-base text-green-400">
+                                R$ {service.price.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                              </span>
+                              {selectedService?.id === service.id && (
+                                <div className="mt-2 inline-flex items-center gap-1 text-[11px] font-bold text-green-400 bg-green-500/10 px-2 py-0.5 rounded-full border border-green-500/20">
+                                  <Check size={12} /> Selecionado
+                                </div>
+                              )}
+                            </div>
                           </div>
-                          <p className="text-xs text-neutral-500 mt-1 flex items-center gap-1">
-                            <Clock size={12} />
-                            Aproximadamente {service.duration} min
-                          </p>
                         </div>
-                        <span className="font-bold text-sm text-green-500">
-                          R$ {service.price.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-                        </span>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 )}
               </section>
