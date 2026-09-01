@@ -12,7 +12,12 @@ import {
   X, 
   Clock,
   ExternalLink,
-  Flame
+  Flame,
+  MessageSquare,
+  Car,
+  User,
+  Phone,
+  DollarSign
 } from 'lucide-react';
 import { createClient } from '@/utils/supabase/client';
 import Link from 'next/link';
@@ -28,6 +33,17 @@ export interface NotificationItem {
   read: boolean;
   link?: string;
   badgeText?: string;
+  details?: {
+    customerName?: string;
+    customerPhone?: string;
+    vehiclePlate?: string;
+    serviceName?: string;
+    totalPrice?: number;
+    scheduledAt?: string;
+    rating?: number;
+    comment?: string;
+    systemChangelog?: string[];
+  };
 }
 
 // 1. SIRENE DE ALARME DE ALTA ATENÇÃO (Pulsante e Estridente - ~4.0 segundos)
@@ -43,9 +59,8 @@ export function playSirenAlert() {
     }
 
     const startTime = ctx.currentTime;
-    const totalDuration = 4.0; // 4 segundos de sirene enérgica
+    const totalDuration = 4.0;
 
-    // Oscilador 1: Onda Sawtooth com filtro para dar o efeito de sirene de emergência
     const osc1 = ctx.createOscillator();
     const filter = ctx.createBiquadFilter();
     const gain1 = ctx.createGain();
@@ -54,7 +69,6 @@ export function playSirenAlert() {
     filter.type = 'lowpass';
     filter.frequency.setValueAtTime(2200, startTime);
 
-    // Modulação de frequência: Sirene subindo e descendo por 4 ciclos em 4 segundos
     const cycles = 4;
     const cycleDuration = totalDuration / cycles;
     for (let i = 0; i < cycles; i++) {
@@ -79,7 +93,6 @@ export function playSirenAlert() {
     osc1.start(startTime);
     osc1.stop(startTime + totalDuration);
 
-    // Oscilador 2: Tom agudo senoidal de reforço em harmonia
     const osc2 = ctx.createOscillator();
     const gain2 = ctx.createGain();
     osc2.type = 'sine';
@@ -105,14 +118,13 @@ export function playSirenAlert() {
     osc2.start(startTime);
     osc2.stop(startTime + totalDuration);
 
-    // 4 Pulsos de Bip agudo estridente para cortar o barulho de máquinas e compressores
     for (let i = 0; i < cycles; i++) {
       const beepTime = startTime + (i * cycleDuration);
       const oscBeep = ctx.createOscillator();
       const gainBeep = ctx.createGain();
 
       oscBeep.type = 'square';
-      oscBeep.frequency.setValueAtTime(1760, beepTime); // Lá 6
+      oscBeep.frequency.setValueAtTime(1760, beepTime);
 
       gainBeep.gain.setValueAtTime(0.2, beepTime);
       gainBeep.gain.exponentialRampToValueAtTime(0.001, beepTime + 0.12);
@@ -145,7 +157,6 @@ export function playIFoodAlert() {
 
     const bursts = [0.0, 0.9, 1.8, 2.7];
     bursts.forEach(t => {
-      // Tom 1
       const osc1 = ctx.createOscillator();
       const gain1 = ctx.createGain();
       osc1.type = 'sine';
@@ -157,7 +168,6 @@ export function playIFoodAlert() {
       osc1.start(ctx.currentTime + t);
       osc1.stop(ctx.currentTime + t + 0.35);
 
-      // Tom 2 mais agudo
       const osc2 = ctx.createOscillator();
       const gain2 = ctx.createGain();
       osc2.type = 'sine';
@@ -234,6 +244,7 @@ export function AdminNotificationBell() {
   const supabase = createClient();
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [isOpen, setIsOpen] = useState(false);
+  const [selectedModal, setSelectedModal] = useState<NotificationItem | null>(null);
   const [soundEnabled, setSoundEnabled] = useState(true);
   const [soundType, setSoundType] = useState<SoundType>(() => {
     if (typeof window !== 'undefined') {
@@ -279,7 +290,15 @@ export function AdminNotificationBell() {
         description: 'Agora o sistema dispara uma sirene de 4 segundos a cada nova lavagem marcada para chamar sua atenção total no balcão!',
         timestamp: new Date(),
         read: false,
-        badgeText: 'Alarme Ativo'
+        badgeText: 'Alarme Ativo',
+        details: {
+          systemChangelog: [
+            'Sirene potente de 4 segundos acionada automaticamente a cada agendamento',
+            'Seletor com 3 opções de toques: Sirene de Alarme, Bip de Pedido e Campainha',
+            'Central de Notificações com janela detalhada para ver avaliações e agendamentos',
+            'Alerta visual Toast animado no topo da tela'
+          ]
+        }
       },
       {
         id: 'sys-update-2',
@@ -289,7 +308,15 @@ export function AdminNotificationBell() {
         timestamp: new Date(Date.now() - 1000 * 60 * 60 * 2),
         read: false,
         link: '/admin/clientes',
-        badgeText: 'Recurso PJ'
+        badgeText: 'Recurso PJ',
+        details: {
+          systemChangelog: [
+            'Alternador inteligente Pessoa Física vs Pessoa Jurídica (Empresas / Frotas)',
+            'Campos para CNPJ formatado, Responsável de Frota e Observações de Convênio',
+            'Filtro de busca rápida: Todos, Particulares e Empresas',
+            'Fidelidade corporativa com pontuação para frotas'
+          ]
+        }
       },
       {
         id: 'sys-update-1',
@@ -299,7 +326,15 @@ export function AdminNotificationBell() {
         timestamp: new Date(Date.now() - 1000 * 60 * 60 * 24),
         read: false,
         link: '/admin/financeiro',
-        badgeText: 'Financeiro'
+        badgeText: 'Financeiro',
+        details: {
+          systemChangelog: [
+            'Filtros por Hoje, Semanal (7 dias), Mensal, Anual e Período Personalizado',
+            'Cards de KPIs: Faturamento Bruto, Lavagens Realizadas e Ticket Médio',
+            'Gráfico de serviços mais vendidos e faturamento por categoria',
+            'Exportação em 1 clique para planilha Excel (CSV) e Impressão A4 formatada'
+          ]
+        }
       }
     ];
 
@@ -329,7 +364,15 @@ export function AdminNotificationBell() {
               timestamp: new Date(app.created_at || app.scheduled_at),
               read: app.status === 'FINALIZADO' || app.status === 'CANCELADO',
               link: '/admin/agendamentos',
-              badgeText: app.status
+              badgeText: app.status,
+              details: {
+                customerName: app.customer_name,
+                customerPhone: app.customer_phone,
+                vehiclePlate: app.vehicle_plate,
+                serviceName: serviceName,
+                totalPrice: Number(app.total_price),
+                scheduledAt: `${dateStr} às ${timeStr}`
+              }
             });
           });
         }
@@ -339,7 +382,7 @@ export function AdminNotificationBell() {
         try {
           const { data: recentFeedbacks } = await supabase
             .from('feedbacks')
-            .select('id, customer_name, comment, rating, created_at')
+            .select('id, customer_name, customer_phone, comment, rating, created_at')
             .order('created_at', { ascending: false })
             .limit(10);
 
@@ -353,7 +396,13 @@ export function AdminNotificationBell() {
                 description: `"${fb.comment.slice(0, 100)}${fb.comment.length > 100 ? '...' : ''}" — ${fb.customer_name || 'Cliente'}`,
                 timestamp: new Date(fb.created_at),
                 read: false,
-                badgeText: `${fb.rating} ⭐`
+                badgeText: `${fb.rating} ⭐`,
+                details: {
+                  customerName: fb.customer_name || 'Cliente',
+                  customerPhone: fb.customer_phone || undefined,
+                  comment: fb.comment,
+                  rating: Number(fb.rating)
+                }
               });
             });
           }
@@ -375,7 +424,7 @@ export function AdminNotificationBell() {
 
     loadInitialData();
 
-    // 3. Polling em tempo real a cada 10 segundos para novos agendamentos e feedbacks
+    // 3. Polling em tempo real a cada 8 segundos para novos agendamentos e feedbacks
     const interval = setInterval(async () => {
       try {
         const { data: latestAppointments } = await supabase
@@ -402,15 +451,21 @@ export function AdminNotificationBell() {
                 timestamp: new Date(),
                 read: false,
                 link: '/admin/agendamentos',
-                badgeText: 'NOVO'
+                badgeText: 'NOVO',
+                details: {
+                  customerName: app.customer_name,
+                  customerPhone: app.customer_phone,
+                  vehiclePlate: app.vehicle_plate,
+                  serviceName: serviceName,
+                  totalPrice: Number(app.total_price),
+                  scheduledAt: `${dateStr} às ${timeStr}`
+                }
               };
 
-              // Toca sirene/alarme se ativado (4.0 segundos)
               if (soundEnabled) {
                 playNotificationSound(soundType);
               }
 
-              // Exibe Toast na tela por 7 segundos
               setActiveToast(newNotif);
               setTimeout(() => setActiveToast(null), 7000);
 
@@ -423,7 +478,7 @@ export function AdminNotificationBell() {
         try {
           const { data: latestFeedbacks } = await supabase
             .from('feedbacks')
-            .select('id, customer_name, comment, rating, created_at')
+            .select('id, customer_name, customer_phone, comment, rating, created_at')
             .order('created_at', { ascending: false })
             .limit(3);
 
@@ -439,7 +494,13 @@ export function AdminNotificationBell() {
                   description: `"${fb.comment.slice(0, 100)}${fb.comment.length > 100 ? '...' : ''}" — ${fb.customer_name || 'Cliente'}`,
                   timestamp: new Date(),
                   read: false,
-                  badgeText: `${fb.rating} ⭐`
+                  badgeText: `${fb.rating} ⭐`,
+                  details: {
+                    customerName: fb.customer_name || 'Cliente',
+                    customerPhone: fb.customer_phone || undefined,
+                    comment: fb.comment,
+                    rating: Number(fb.rating)
+                  }
                 };
 
                 if (soundEnabled) {
@@ -464,7 +525,7 @@ export function AdminNotificationBell() {
     // 4. Inscrição em Tempo Real Instantânea (WebSockets Broadcast)
     const channel = supabase.channel('brilho-magico-realtime')
       .on('broadcast', { event: 'new-feedback' }, (response) => {
-        const fb = response.payload as { id?: string; customer_name?: string; comment?: string; rating?: number };
+        const fb = response.payload as { id?: string; customer_name?: string; customer_phone?: string; comment?: string; rating?: number };
         if (!fb) return;
         const fid = fb.id || `fb-${Date.now()}`;
         if (knownFeedbackIds.current.has(fid)) return;
@@ -477,7 +538,13 @@ export function AdminNotificationBell() {
           description: `"${(fb.comment || '').slice(0, 100)}" — ${fb.customer_name || 'Cliente'}`,
           timestamp: new Date(),
           read: false,
-          badgeText: `${fb.rating || 5} ⭐`
+          badgeText: `${fb.rating || 5} ⭐`,
+          details: {
+            customerName: fb.customer_name || 'Cliente',
+            customerPhone: fb.customer_phone || undefined,
+            comment: fb.comment,
+            rating: Number(fb.rating || 5)
+          }
         };
 
         if (soundEnabled) {
@@ -490,7 +557,7 @@ export function AdminNotificationBell() {
         setNotifications(prev => [newNotif, ...prev]);
       })
       .on('broadcast', { event: 'new-appointment' }, (response) => {
-        const app = response.payload as { id?: string; customer_name?: string; service_name?: string; scheduled_at?: string; total_price?: number; vehicle_plate?: string };
+        const app = response.payload as { id?: string; customer_name?: string; customer_phone?: string; service_name?: string; scheduled_at?: string; total_price?: number; vehicle_plate?: string };
         if (!app) return;
         const aid = app.id || `app-${Date.now()}`;
         if (knownAppointmentIds.current.has(aid)) return;
@@ -508,7 +575,15 @@ export function AdminNotificationBell() {
           timestamp: new Date(),
           read: false,
           link: '/admin/agendamentos',
-          badgeText: 'NOVO'
+          badgeText: 'NOVO',
+          details: {
+            customerName: app.customer_name,
+            customerPhone: app.customer_phone,
+            vehiclePlate: app.vehicle_plate,
+            serviceName: app.service_name,
+            totalPrice: Number(app.total_price || 0),
+            scheduledAt: `${dateStr} às ${timeStr}`
+          }
         };
 
         if (soundEnabled) {
@@ -536,6 +611,12 @@ export function AdminNotificationBell() {
 
   const markSingleAsRead = (id: string) => {
     setNotifications(prev => prev.map(n => n.id === id ? { ...n, read: true } : n));
+  };
+
+  const handleOpenNotification = (n: NotificationItem) => {
+    markSingleAsRead(n.id);
+    setSelectedModal(n);
+    setIsOpen(false);
   };
 
   return (
@@ -667,10 +748,11 @@ export function AdminNotificationBell() {
                 const isSys = n.type === 'SYSTEM';
 
                 return (
-                  <div
+                  <button
                     key={n.id}
-                    onClick={() => markSingleAsRead(n.id)}
-                    className={`p-3.5 transition-colors text-left relative ${
+                    type="button"
+                    onClick={() => handleOpenNotification(n)}
+                    className={`w-full p-3.5 transition-colors text-left relative block ${
                       !n.read 
                         ? 'bg-blue-50/40 dark:bg-blue-950/20 hover:bg-blue-50/70 dark:hover:bg-blue-950/40' 
                         : 'hover:bg-gray-50 dark:hover:bg-gray-900/50'
@@ -703,7 +785,7 @@ export function AdminNotificationBell() {
                           )}
                         </div>
 
-                        <p className="text-[11px] text-gray-600 dark:text-gray-400 leading-relaxed break-words">
+                        <p className="text-[11px] text-gray-600 dark:text-gray-400 leading-relaxed line-clamp-2">
                           {n.description}
                         </p>
 
@@ -713,19 +795,13 @@ export function AdminNotificationBell() {
                             {n.timestamp.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
                           </span>
 
-                          {n.link && (
-                            <Link
-                              href={n.link}
-                              onClick={() => setIsOpen(false)}
-                              className="text-[10px] font-bold text-blue-600 dark:text-blue-400 hover:underline flex items-center gap-1"
-                            >
-                              Ver detalhes <ExternalLink size={10} />
-                            </Link>
-                          )}
+                          <span className="text-[10px] font-bold text-blue-600 dark:text-blue-400 hover:underline flex items-center gap-1">
+                            Ver detalhes <ExternalLink size={10} />
+                          </span>
                         </div>
                       </div>
                     </div>
-                  </div>
+                  </button>
                 );
               })
             )}
@@ -750,7 +826,10 @@ export function AdminNotificationBell() {
 
       {/* Banner Toast Flutuante em Tempo Real */}
       {activeToast && (
-        <div className="fixed top-5 right-5 z-50 max-w-sm w-full bg-white dark:bg-gray-900 border-2 border-red-500 shadow-2xl rounded-2xl p-4 animate-in slide-in-from-top-4 duration-300">
+        <div 
+          onClick={() => handleOpenNotification(activeToast)}
+          className="fixed top-5 right-5 z-50 max-w-sm w-full bg-white dark:bg-gray-900 border-2 border-red-500 shadow-2xl rounded-2xl p-4 animate-in slide-in-from-top-4 duration-300 cursor-pointer hover:scale-[1.02] transition-transform"
+        >
           <div className="flex items-start justify-between gap-3">
             <div className="p-2.5 rounded-xl bg-red-500/15 text-red-500 shrink-0 animate-bounce">
               <Calendar size={22} />
@@ -758,7 +837,7 @@ export function AdminNotificationBell() {
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2">
                 <span className="px-2 py-0.5 rounded-full bg-red-600 text-white font-black text-[9px] uppercase tracking-wider animate-pulse">
-                  🚨 NOVO AGENDAMENTO RECEBIDO!
+                  🚨 NOVO AVISO / AGENDAMENTO!
                 </span>
               </div>
               <h4 className="text-xs font-bold text-gray-900 dark:text-white mt-1">
@@ -767,13 +846,263 @@ export function AdminNotificationBell() {
               <p className="text-[11px] text-gray-600 dark:text-gray-300 mt-0.5">
                 {activeToast.description}
               </p>
+              <span className="text-[10px] text-blue-500 font-bold mt-1.5 block">
+                Clique para ver todos os detalhes →
+              </span>
             </div>
             <button
-              onClick={() => setActiveToast(null)}
+              onClick={(e) => {
+                e.stopPropagation();
+                setActiveToast(null);
+              }}
               className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"
             >
               <X size={16} />
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* JANELA MODAL COM OS DETALHES COMPLETOS DA NOTIFICAÇÃO */}
+      {selectedModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-xs">
+          <div className="w-full max-w-md bg-white dark:bg-gray-950 border border-gray-200 dark:border-gray-800 rounded-3xl p-6 shadow-2xl animate-in fade-in zoom-in-95 duration-150 max-h-[90vh] overflow-y-auto">
+            
+            {/* Header da Janela */}
+            <div className="flex items-center justify-between mb-4 pb-3 border-b border-gray-100 dark:border-gray-800">
+              <div className="flex items-center gap-3">
+                <div className={`p-2.5 rounded-2xl ${
+                  selectedModal.type === 'FEEDBACK'
+                    ? 'bg-amber-100 dark:bg-amber-950/60 text-amber-600 dark:text-amber-400'
+                    : selectedModal.type === 'APPOINTMENT'
+                    ? 'bg-green-100 dark:bg-green-950/60 text-green-600 dark:text-green-400'
+                    : 'bg-purple-100 dark:bg-purple-950/60 text-purple-600 dark:text-purple-400'
+                }`}>
+                  {selectedModal.type === 'FEEDBACK' && <Star size={22} className="fill-current" />}
+                  {selectedModal.type === 'APPOINTMENT' && <Calendar size={22} />}
+                  {selectedModal.type === 'SYSTEM' && <Sparkles size={22} />}
+                </div>
+
+                <div>
+                  <h3 className="font-bold text-gray-900 dark:text-white text-base">
+                    {selectedModal.type === 'FEEDBACK' && 'Avaliação de Cliente'}
+                    {selectedModal.type === 'APPOINTMENT' && 'Novo Agendamento'}
+                    {selectedModal.type === 'SYSTEM' && 'Atualização do Sistema'}
+                  </h3>
+                  <span className="text-[11px] text-gray-500 flex items-center gap-1">
+                    <Clock size={11} />
+                    {selectedModal.timestamp.toLocaleDateString('pt-BR')} às {selectedModal.timestamp.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+                  </span>
+                </div>
+              </div>
+
+              <button 
+                onClick={() => setSelectedModal(null)}
+                className="p-1.5 rounded-lg text-gray-400 hover:text-gray-700 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            {/* CONTEÚDO PARA FEEDBACK / AVALIAÇÃO */}
+            {selectedModal.type === 'FEEDBACK' && (
+              <div className="space-y-4">
+                {/* 5 Estrelas em Destaque */}
+                <div className="p-4 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-center">
+                  <div className="flex items-center justify-center gap-1.5 mb-1.5">
+                    {[1, 2, 3, 4, 5].map((star) => (
+                      <Star 
+                        key={star} 
+                        size={28} 
+                        className={star <= (selectedModal.details?.rating || 5)
+                          ? 'fill-amber-400 text-amber-400 drop-shadow-[0_0_8px_rgba(251,191,36,0.5)]' 
+                          : 'text-gray-300 dark:text-gray-700'
+                        } 
+                      />
+                    ))}
+                  </div>
+                  <span className="text-sm font-black text-amber-500">
+                    Nota: {selectedModal.details?.rating || 5} de 5 Estrelas
+                  </span>
+                </div>
+
+                {/* Comentário Completo */}
+                <div>
+                  <label className="block text-[11px] font-bold text-gray-400 uppercase tracking-wider mb-1.5">
+                    Depoimento / O que achou do atendimento:
+                  </label>
+                  <div className="p-4 rounded-2xl bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-800 text-gray-800 dark:text-gray-200 text-sm leading-relaxed italic">
+                    &ldquo;{selectedModal.details?.comment || selectedModal.description}&rdquo;
+                  </div>
+                </div>
+
+                {/* Informações do Cliente */}
+                <div className="p-3.5 rounded-2xl bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-800 space-y-2 text-xs">
+                  <div className="flex items-center justify-between">
+                    <span className="text-gray-500 flex items-center gap-1.5">
+                      <User size={13} /> Nome do Cliente:
+                    </span>
+                    <span className="font-bold text-gray-900 dark:text-white">
+                      {selectedModal.details?.customerName || 'Cliente'}
+                    </span>
+                  </div>
+
+                  {selectedModal.details?.customerPhone && (
+                    <div className="flex items-center justify-between">
+                      <span className="text-gray-500 flex items-center gap-1.5">
+                        <Phone size={13} /> WhatsApp:
+                      </span>
+                      <span className="font-bold text-green-600 dark:text-green-400">
+                        {selectedModal.details.customerPhone}
+                      </span>
+                    </div>
+                  )}
+                </div>
+
+                {/* Botões de Ação do Feedback */}
+                <div className="flex flex-col sm:flex-row gap-2 pt-2">
+                  {selectedModal.details?.customerPhone && (
+                    <a
+                      href={`https://wa.me/55${selectedModal.details.customerPhone.replace(/\D/g, '')}?text=${encodeURIComponent(`Olá ${selectedModal.details.customerName || ''}! Muito obrigado pelo seu feedback na Brilho Mágico! Ficamos muito felizes com a sua avaliação.`)}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex-1 py-3 px-4 rounded-xl bg-green-600 hover:bg-green-500 text-white font-bold text-xs flex items-center justify-center gap-2 transition-colors shadow-md shadow-green-600/20"
+                    >
+                      <MessageSquare size={16} />
+                      Agradecer no WhatsApp
+                    </a>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => setSelectedModal(null)}
+                    className="py-3 px-4 rounded-xl bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 font-semibold text-xs transition-colors"
+                  >
+                    Fechar
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* CONTEÚDO PARA NOVO AGENDAMENTO */}
+            {selectedModal.type === 'APPOINTMENT' && (
+              <div className="space-y-4">
+                <div className="p-4 rounded-2xl bg-green-500/10 border border-green-500/30">
+                  <span className="px-2.5 py-1 rounded-full bg-green-500 text-gray-950 font-black text-[10px] uppercase tracking-wider inline-block mb-2">
+                    Reserva Confirmada
+                  </span>
+                  <h4 className="text-base font-bold text-gray-900 dark:text-white">
+                    {selectedModal.details?.serviceName || 'Lavagem Automotiva'}
+                  </h4>
+                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                    Data/Hora: <strong>{selectedModal.details?.scheduledAt}</strong>
+                  </p>
+                </div>
+
+                <div className="p-4 rounded-2xl bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-800 space-y-2.5 text-xs">
+                  <div className="flex items-center justify-between">
+                    <span className="text-gray-500 flex items-center gap-1.5">
+                      <User size={14} /> Cliente:
+                    </span>
+                    <span className="font-bold text-gray-900 dark:text-white">
+                      {selectedModal.details?.customerName || 'Cliente'}
+                    </span>
+                  </div>
+
+                  {selectedModal.details?.customerPhone && (
+                    <div className="flex items-center justify-between">
+                      <span className="text-gray-500 flex items-center gap-1.5">
+                        <Phone size={14} /> WhatsApp:
+                      </span>
+                      <span className="font-bold text-gray-900 dark:text-white">
+                        {selectedModal.details.customerPhone}
+                      </span>
+                    </div>
+                  )}
+
+                  {selectedModal.details?.vehiclePlate && (
+                    <div className="flex items-center justify-between">
+                      <span className="text-gray-500 flex items-center gap-1.5">
+                        <Car size={14} /> Placa do Veículo:
+                      </span>
+                      <span className="font-mono font-black text-gray-900 dark:text-white uppercase bg-gray-200 dark:bg-gray-800 px-2 py-0.5 rounded-md">
+                        {selectedModal.details.vehiclePlate}
+                      </span>
+                    </div>
+                  )}
+
+                  <div className="flex items-center justify-between pt-2 border-t border-gray-200 dark:border-gray-800">
+                    <span className="text-gray-500 flex items-center gap-1.5">
+                      <DollarSign size={14} /> Valor Total:
+                    </span>
+                    <span className="font-black text-sm text-green-600 dark:text-green-400">
+                      R$ {Number(selectedModal.details?.totalPrice || 0).toFixed(2)}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="flex flex-col sm:flex-row gap-2 pt-2">
+                  <Link
+                    href="/admin/agendamentos"
+                    onClick={() => setSelectedModal(null)}
+                    className="flex-1 py-3 px-4 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs flex items-center justify-center gap-2 transition-colors shadow-md shadow-blue-600/20 text-center"
+                  >
+                    <Calendar size={16} />
+                    Ver no Painel de Agendamentos
+                  </Link>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedModal(null)}
+                    className="py-3 px-4 rounded-xl bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 font-semibold text-xs transition-colors"
+                  >
+                    Fechar
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* CONTEÚDO PARA ATUALIZAÇÃO DO SISTEMA */}
+            {selectedModal.type === 'SYSTEM' && (
+              <div className="space-y-4">
+                <div className="p-4 rounded-2xl bg-purple-500/10 border border-purple-500/30">
+                  <span className="px-2.5 py-1 rounded-full bg-purple-600 text-white font-black text-[10px] uppercase tracking-wider inline-block mb-1.5">
+                    {selectedModal.badgeText || 'Novidade'}
+                  </span>
+                  <h4 className="text-sm font-bold text-gray-900 dark:text-white">
+                    {selectedModal.title}
+                  </h4>
+                  <p className="text-xs text-gray-600 dark:text-gray-300 mt-1 leading-relaxed">
+                    {selectedModal.description}
+                  </p>
+                </div>
+
+                {selectedModal.details?.systemChangelog && (
+                  <div>
+                    <label className="block text-[11px] font-bold text-gray-400 uppercase tracking-wider mb-2">
+                      Principais Recursos Adicionados:
+                    </label>
+                    <ul className="space-y-2 text-xs text-gray-700 dark:text-gray-300">
+                      {selectedModal.details.systemChangelog.map((item, idx) => (
+                        <li key={idx} className="flex items-start gap-2 p-2 rounded-xl bg-gray-50 dark:bg-gray-900 border border-gray-100 dark:border-gray-800">
+                          <span className="text-purple-500 font-bold shrink-0">✓</span>
+                          <span>{item}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+
+                <div className="pt-2">
+                  <button
+                    type="button"
+                    onClick={() => setSelectedModal(null)}
+                    className="w-full py-3 px-4 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-bold text-xs transition-colors shadow-md shadow-purple-600/20"
+                  >
+                    Entendido!
+                  </button>
+                </div>
+              </div>
+            )}
+
           </div>
         </div>
       )}
