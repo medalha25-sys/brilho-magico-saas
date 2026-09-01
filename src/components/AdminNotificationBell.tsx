@@ -642,9 +642,16 @@ export function AdminNotificationBell() {
 
       {/* Dropdown Popover */}
       {isOpen && (
-        <div className="absolute right-0 mt-2 w-80 sm:w-96 bg-white dark:bg-gray-950 rounded-2xl shadow-2xl border border-gray-200 dark:border-gray-800 z-50 overflow-hidden animate-in fade-in zoom-in-95 duration-150">
-          {/* Header do Dropdown */}
-          <div className="p-3.5 border-b border-gray-100 dark:border-gray-800 flex items-center justify-between bg-gray-50/70 dark:bg-gray-900/70">
+        <>
+          {/* Overlay transparente no Mobile para fechar ao clicar fora */}
+          <div 
+            className="fixed inset-0 z-40 bg-black/30 backdrop-blur-2xs sm:hidden" 
+            onClick={() => setIsOpen(false)} 
+          />
+
+          <div className="fixed inset-x-3 top-16 sm:absolute sm:inset-x-auto sm:right-0 sm:top-full sm:mt-2 w-auto sm:w-96 max-w-sm sm:max-w-none mx-auto sm:mx-0 bg-white dark:bg-gray-950 rounded-2xl shadow-2xl border border-gray-200 dark:border-gray-800 z-50 overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+            {/* Header do Dropdown */}
+            <div className="p-3.5 border-b border-gray-100 dark:border-gray-800 flex items-center justify-between bg-gray-50/70 dark:bg-gray-900/70">
             <div className="flex items-center gap-2">
               <Bell className="h-4 w-4 text-amber-500" />
               <span className="text-sm font-bold text-gray-900 dark:text-white">
@@ -822,6 +829,7 @@ export function AdminNotificationBell() {
             </button>
           </div>
         </div>
+      </>
       )}
 
       {/* Banner Toast Flutuante em Tempo Real */}

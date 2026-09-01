@@ -297,7 +297,14 @@ export default function AdminLayoutClient({
 
               {/* Popover do Usuário */}
               {userDropdownOpen && (
-                <div className="absolute right-0 mt-2 w-72 bg-white dark:bg-gray-950 rounded-2xl shadow-2xl border border-gray-200 dark:border-gray-800 z-50 overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+                <>
+                  {/* Overlay transparente no Mobile para fechar ao clicar fora */}
+                  <div 
+                    className="fixed inset-0 z-40 bg-black/30 backdrop-blur-2xs sm:hidden" 
+                    onClick={() => setUserDropdownOpen(false)} 
+                  />
+
+                  <div className="fixed inset-x-3 top-16 sm:absolute sm:inset-x-auto sm:right-0 sm:top-full sm:mt-2 w-auto sm:w-72 max-w-sm sm:max-w-none mx-auto sm:mx-0 bg-white dark:bg-gray-950 rounded-2xl shadow-2xl border border-gray-200 dark:border-gray-800 z-50 overflow-hidden animate-in fade-in zoom-in-95 duration-150">
                   {/* Cabeçalho do Perfil */}
                   <div className="p-4 border-b border-gray-100 dark:border-gray-800 bg-gray-50/70 dark:bg-gray-900/70">
                     <div className="flex items-center gap-3">
@@ -398,6 +405,7 @@ export default function AdminLayoutClient({
                     </button>
                   </div>
                 </div>
+              </>
               )}
             </div>
           </div>
