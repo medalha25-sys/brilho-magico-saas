@@ -2,7 +2,32 @@
 
 import React, { useEffect, useState } from 'react';
 import { createClient } from '@/utils/supabase/client';
-import { Calendar, Phone, Tag, Trash2, Clock, CheckCircle2, XCircle, Search, Printer } from 'lucide-react';
+import { 
+  Calendar, 
+  Phone, 
+  Tag, 
+  Trash2, 
+  Clock, 
+  CheckCircle2, 
+  XCircle, 
+  Search, 
+  Printer, 
+  Plus, 
+  X, 
+  User, 
+  Car, 
+  DollarSign, 
+  FileText,
+  Sparkles
+} from 'lucide-react';
+
+interface ServiceItem {
+  id: string;
+  name: string;
+  price: number;
+  duration_minutes: number;
+  vehicle_type?: string;
+}
 
 interface Appointment {
   id: string;
@@ -31,6 +56,7 @@ interface TenantInfo {
 export default function AgendamentosPage() {
   const supabase = createClient();
   const [appointments, setAppointments] = useState<Appointment[]>([]);
+  const [services, setServices] = useState<ServiceItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('TODOS');
@@ -38,7 +64,31 @@ export default function AgendamentosPage() {
   const [tenantId, setTenantId] = useState<string | null>(null);
   const [printApp, setPrintApp] = useState<Appointment | null>(null);
 
-  // Carrega os agendamentos e dados da empresa do Supabase
+  // Estados do Modal "Lançar Nova Lavagem" (Entrada no Balcão)
+  const [isNewWashOpen, setIsNewWashOpen] = useState(false);
+  const [customerName, setCustomerName] = useState('');
+  const [customerPhone, setCustomerPhone] = useState('');
+  const [vehiclePlate, setVehiclePlate] = useState('');
+  const [customerCpf, setCustomerCpf] = useState('');
+  const [selectedServiceId, setSelectedServiceId] = useState('');
+  const [customPrice, setCustomPrice] = useState<number | string>('');
+  const [scheduledAt, setScheduledAt] = useState('');
+  const [initialStatus, setInitialStatus] = useState<'CONFIRMADO' | 'FINALIZADO' | 'PENDENTE'>('CONFIRMADO');
+  const [submittingWash, setSubmittingWash] = useState(false);
+  const [washError, setWashError] = useState<string | null>(null);
+
+  // Helper para obter a data e hora atual no formato YYYY-MM-DDTHH:mm
+  const getCurrentLocalDateTime = () => {
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = String(now.getMonth() + 1).padStart(2, '0');
+    const day = String(now.getDate()).padStart(2, '0');
+    const hours = String(now.getHours()).padStart(2, '0');
+    const minutes = String(now.getMinutes()).padStart(2, '0');
+    return `${year}-${month}-${day}T${hours}:${minutes}`;
+  };
+
+  // Carrega os agendamentos, serviços e dados da empresa do Supabase
   const loadAppointments = async () => {
     try {
       setLoading(true);
@@ -53,7 +103,7 @@ export default function AgendamentosPage() {
         setAppointments(data as unknown as Appointment[]);
       }
 
-      // Busca dados do tenant para o cabeçalho do cupom
+      // Busca dados do usuário, tenant e serviços ativos
       const { data: { user } } = await supabase.auth.getUser();
       if (user) {
         const { data: profile } = await supabase
@@ -63,15 +113,30 @@ export default function AgendamentosPage() {
           .single();
 
         if (profile?.tenant_id) {
-          setTenantId(profile.tenant_id);
+          const tId = profile.tenant_id;
+          setTenantId(tId);
+
+          // Busca dados da empresa
           const { data: tenant } = await supabase
             .from('tenants')
             .select('name, phone, address, cnpj')
-            .eq('id', profile.tenant_id)
+            .eq('id', tId)
             .single();
 
           if (tenant) {
             setTenantInfo(tenant);
+          }
+
+          // Busca serviços para o formulário de lançamento
+          const { data: servicesData } = await supabase
+            .from('services')
+            .select('*')
+            .eq('tenant_id', tId)
+            .eq('is_active', true)
+            .order('name', { ascending: true });
+
+          if (servicesData) {
+            setServices(servicesData);
           }
         }
       }
@@ -87,6 +152,149 @@ export default function AgendamentosPage() {
     loadAppointments();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Abre o modal de nova lavagem
+  const handleOpenNewWash = () => {
+    setCustomerName('');
+    setCustomerPhone('');
+    setVehiclePlate('');
+    setCustomerCpf('');
+    setSelectedServiceId(services.length > 0 ? services[0].id : '');
+    setCustomPrice(services.length > 0 ? services[0].price : 40.00);
+    setScheduledAt(getCurrentLocalDateTime());
+    setInitialStatus('CONFIRMADO');
+    setWashError(null);
+    setIsNewWashOpen(true);
+  };
+
+  // Ao selecionar um serviço diferente no modal
+  const handleServiceChange = (serviceId: string) => {
+    setSelectedServiceId(serviceId);
+    const s = services.find(item => item.id === serviceId);
+    if (s) {
+      setCustomPrice(s.price);
+    }
+  };
+
+  // Auto-completar dados do cliente ao digitar o WhatsApp
+  const handlePhoneBlur = async () => {
+    const cleanDigits = customerPhone.replace(/\D/g, '');
+    if (cleanDigits.length >= 10 && tenantId) {
+      try {
+        const { data: customerList } = await supabase
+          .from('customers')
+          .select('name, phone, vehicle_plate, cpf')
+          .eq('tenant_id', tenantId);
+
+        const matched = (customerList || []).find(c => {
+          const cClean = (c.phone || '').replace(/\D/g, '');
+          return cClean === cleanDigits || (cleanDigits.length >= 10 && cClean.endsWith(cleanDigits.slice(-10)));
+        });
+
+        if (matched) {
+          if (!customerName && matched.name) setCustomerName(matched.name);
+          if (!vehiclePlate && matched.vehicle_plate) setVehiclePlate(matched.vehicle_plate);
+          if (!customerCpf && matched.cpf) setCustomerCpf(matched.cpf);
+        }
+      } catch (err) {
+        console.error(err);
+      }
+    }
+  };
+
+  // Submissão do lançamento de lavagem
+  const handleCreateWash = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!customerName || !customerPhone || !vehiclePlate || !tenantId) {
+      setWashError("Por favor, preencha o Nome, Telefone e Placa do veículo.");
+      return;
+    }
+
+    setSubmittingWash(true);
+    setWashError(null);
+
+    try {
+      const cleanPhone = customerPhone.trim();
+      const cleanPlate = vehiclePlate.toUpperCase().trim();
+      const cleanCpf = customerCpf ? customerCpf.replace(/\D/g, '') : null;
+      const scheduledIso = new Date(scheduledAt || Date.now()).toISOString();
+      const finalPrice = Number(customPrice) || 0;
+
+      // 1. Cria ou atualiza o cliente na tabela customers
+      try {
+        const { data: customerList } = await supabase
+          .from('customers')
+          .select('id, phone, points')
+          .eq('tenant_id', tenantId);
+
+        const matched = (customerList || []).find(c => {
+          const cClean = (c.phone || '').replace(/\D/g, '');
+          const cleanD = cleanPhone.replace(/\D/g, '');
+          return cClean === cleanD || (cleanD.length >= 10 && cClean.endsWith(cleanD.slice(-10)));
+        });
+
+        if (matched) {
+          const addPt = initialStatus === 'FINALIZADO' ? 1 : 0;
+          await supabase
+            .from('customers')
+            .update({
+              name: customerName,
+              vehicle_plate: cleanPlate,
+              cpf: cleanCpf,
+              points: Number(matched.points || 0) + addPt
+            })
+            .eq('id', matched.id);
+        } else {
+          const initPts = initialStatus === 'FINALIZADO' ? 1 : 0;
+          await supabase
+            .from('customers')
+            .insert({
+              tenant_id: tenantId,
+              name: customerName,
+              phone: cleanPhone,
+              vehicle_plate: cleanPlate,
+              cpf: cleanCpf,
+              points: initPts
+            });
+        }
+      } catch (custErr) {
+        console.warn("Aviso ao salvar cliente:", custErr);
+      }
+
+      // 2. Insere na tabela appointments
+      const { data: newApp, error: appErr } = await supabase
+        .from('appointments')
+        .insert({
+          tenant_id: tenantId,
+          service_id: selectedServiceId || services[0]?.id,
+          customer_name: customerName,
+          customer_phone: cleanPhone,
+          vehicle_plate: cleanPlate,
+          customer_cpf: cleanCpf,
+          scheduled_at: scheduledIso,
+          total_price: finalPrice,
+          status: initialStatus
+        })
+        .select('*, services(name, price, duration_minutes)')
+        .single();
+
+      if (appErr) {
+        setWashError("Erro ao lançar lavagem: " + appErr.message);
+        setSubmittingWash(false);
+        return;
+      }
+
+      if (newApp) {
+        const fullNewApp = newApp as unknown as Appointment;
+        setAppointments(prev => [fullNewApp, ...prev]);
+        setIsNewWashOpen(false);
+      }
+    } catch {
+      setWashError("Erro de conexão ao lançar a lavagem.");
+    } finally {
+      setSubmittingWash(false);
+    }
+  };
 
   // Atualiza o status do agendamento
   const updateStatus = async (id: string, newStatus: Appointment['status']) => {
@@ -109,7 +317,6 @@ export default function AgendamentosPage() {
             const activeTenantId = targetApp.tenant_id || tenantId;
 
             if (activeTenantId) {
-              // 1. Tenta buscar cliente pelo tenant_id
               const { data: customerList } = await supabase
                 .from('customers')
                 .select('id, name, phone, points')
@@ -131,7 +338,6 @@ export default function AgendamentosPage() {
                   .update({ points: currentPts + 1 })
                   .eq('id', matchedCustomer.id);
               } else {
-                // Se o cliente não constava ainda na tabela customers, cadastra já com 1 ponto
                 await supabase
                   .from('customers')
                   .insert({
@@ -174,29 +380,30 @@ export default function AgendamentosPage() {
         setAppointments(prev => prev.filter(app => app.id !== id));
       }
     } catch (err) {
-      console.error(err);
+      console.error("Erro ao deletar:", err);
     }
   };
 
-  // Dispara a impressão do Cupom Térmico (OS)
-  const handlePrintOS = (app: Appointment) => {
+  // Dispara a impressão térmica da Ordem de Serviço (80mm)
+  const handlePrintReceipt = (app: Appointment) => {
     setPrintApp(app);
     setTimeout(() => {
       window.print();
     }, 150);
   };
 
-  // Filtra agendamentos por nome, celular, placa, cpf ou serviço e status
-  const filteredAppointments = appointments.filter(app => {
+  // Filtragem
+  const filteredAppointments = appointments.filter((app) => {
     const query = filter.toLowerCase();
-    const matchesSearch = 
+    const matchesSearch =
       app.customer_name.toLowerCase().includes(query) ||
       app.customer_phone.includes(query) ||
-      (app.customer_cpf && app.customer_cpf.includes(query)) ||
       app.vehicle_plate.toLowerCase().includes(query) ||
-      (app.services?.name || '').toLowerCase().includes(query);
+      (app.customer_cpf && app.customer_cpf.includes(query)) ||
+      (app.services?.name && app.services.name.toLowerCase().includes(query));
 
-    const matchesStatus = statusFilter === 'TODOS' || app.status === statusFilter;
+    const matchesStatus =
+      statusFilter === 'TODOS' ? true : app.status === statusFilter;
 
     return matchesSearch && matchesStatus;
   });
@@ -271,19 +478,31 @@ export default function AgendamentosPage() {
         }
       `}</style>
 
-      {/* Header */}
+      {/* Header com Botões de Ação */}
       <div className="flex flex-col md:flex-row md:items-center justify-between mb-8 gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Agendamentos</h1>
-          <p className="text-gray-500 dark:text-gray-400 text-sm mt-1">Gerencie e imprima a ordem de serviço do seu lava-rápido.</p>
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Agendamentos & Lavagens</h1>
+          <p className="text-gray-500 dark:text-gray-400 text-sm mt-1">
+            Lance lavagens de balcão na chegada dos veículos ou gerencie os agendamentos online.
+          </p>
         </div>
         
-        <button
-          onClick={loadAppointments}
-          className="px-4 py-2 text-sm font-semibold rounded-xl bg-gray-150 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
-        >
-          🔄 Atualizar Tabela
-        </button>
+        <div className="flex items-center gap-3">
+          <button
+            onClick={handleOpenNewWash}
+            className="px-4 py-2.5 text-sm font-semibold rounded-xl bg-blue-600 hover:bg-blue-500 text-white flex items-center justify-center gap-2 shadow-md shadow-blue-500/15 transition-all active:scale-95"
+          >
+            <Plus size={17} /> Lançar Nova Lavagem
+          </button>
+
+          <button
+            onClick={loadAppointments}
+            className="px-3.5 py-2.5 text-sm font-semibold rounded-xl bg-gray-150 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
+            title="Recarregar tabela"
+          >
+            🔄
+          </button>
+        </div>
       </div>
 
       {/* Filtros e Busca */}
@@ -327,7 +546,7 @@ export default function AgendamentosPage() {
           <div className="text-center p-12 text-gray-500">
             <Calendar className="w-12 h-12 mx-auto text-gray-300 dark:text-gray-700 mb-3" />
             <p className="font-semibold text-gray-700 dark:text-gray-300">Nenhum agendamento encontrado</p>
-            <p className="text-xs mt-1">Nenhum registro corresponde aos filtros aplicados.</p>
+            <p className="text-xs mt-1">Lance uma nova lavagem clicando no botão acima.</p>
           </div>
         ) : (
           <div className="overflow-x-auto">
@@ -350,53 +569,56 @@ export default function AgendamentosPage() {
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="flex flex-col text-left">
                         <span className="font-semibold text-sm text-gray-900 dark:text-white">{app.customer_name}</span>
-                        <div className="flex items-center gap-2 mt-0.5">
-                          <a 
-                            href={`https://wa.me/${app.customer_phone.replace(/\D/g, '')}`}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="inline-flex items-center gap-1 text-xs text-green-600 dark:text-green-400 font-medium hover:underline"
-                          >
-                            <Phone size={10} /> {app.customer_phone}
-                          </a>
-                          {app.customer_cpf && (
-                            <span className="inline-flex items-center gap-1 text-[10px] text-gray-500 bg-gray-100 dark:bg-gray-800 dark:text-gray-450 px-1.5 py-0.5 rounded font-mono font-bold" title="CPF para nota fiscal">
-                              CPF: {app.customer_cpf.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, "$1.$2.$3-$4")}
-                            </span>
-                          )}
+                        <div className="flex items-center gap-1 text-xs text-green-600 dark:text-green-400 mt-0.5">
+                          <Phone size={12} />
+                          <span>{app.customer_phone}</span>
                         </div>
+                        {app.customer_cpf && (
+                          <span className="text-[10px] text-gray-400 font-mono mt-0.5">
+                            CPF: {app.customer_cpf.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, "$1.$2.$3-$4")}
+                          </span>
+                        )}
                       </div>
                     </td>
-                    {/* Veículo */}
+
+                    {/* Placa */}
                     <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="inline-flex items-center gap-1.5 px-2 py-1 rounded bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 font-mono text-xs font-semibold">
-                        <Tag size={12} /> {app.vehicle_plate.toUpperCase()}
+                      <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 font-mono text-xs font-semibold">
+                        <Tag size={12} />
+                        {app.vehicle_plate.toUpperCase()}
                       </div>
                     </td>
+
                     {/* Serviço */}
                     <td className="px-6 py-4 whitespace-nowrap">
-                      <span className="text-sm font-semibold text-gray-700 dark:text-gray-350">{app.services?.name || 'Lavagem'}</span>
+                      <span className="text-sm text-gray-900 dark:text-gray-200">
+                        {app.services?.name || 'Serviço Personalizado'}
+                      </span>
                     </td>
+
                     {/* Horário */}
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <span className="text-sm text-gray-500 dark:text-gray-400 font-medium">{formatDateTime(app.scheduled_at)}</span>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
+                      {formatDateTime(app.scheduled_at)}
                     </td>
+
                     {/* Preço */}
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <span className="text-sm font-bold text-gray-900 dark:text-white">R$ {Number(app.total_price).toFixed(2)}</span>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-gray-900 dark:text-white">
+                      R$ {Number(app.total_price).toFixed(2)}
                     </td>
-                    {/* Status Badge */}
+
+                    {/* Status */}
                     <td className="px-6 py-4 whitespace-nowrap">
                       {getStatusBadge(app.status)}
                     </td>
+
                     {/* Ações */}
                     <td className="px-6 py-4 whitespace-nowrap text-center text-sm font-medium">
-                      <div className="flex items-center justify-center gap-1.5">
-                        {/* Botão Imprimir OS (Cupom Fiscal) */}
+                      <div className="flex items-center justify-center gap-2">
+                        {/* Botão Imprimir Ordem de Serviço (Cupom 80mm) */}
                         <button
-                          onClick={() => handlePrintOS(app)}
-                          className="p-1.5 rounded-lg text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-950/30 transition-colors"
-                          title="Imprimir Ordem de Serviço (Cupom Térmico)"
+                          onClick={() => handlePrintReceipt(app)}
+                          className="p-1.5 rounded-lg text-purple-600 dark:text-purple-400 hover:bg-purple-50 dark:hover:bg-purple-950/20 transition-colors"
+                          title="Imprimir Cupom / Ordem de Serviço"
                         >
                           <Printer size={16} />
                         </button>
@@ -414,7 +636,7 @@ export default function AgendamentosPage() {
                           <button
                             onClick={() => updateStatus(app.id, 'FINALIZADO')}
                             className="p-1.5 rounded-lg text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-950/20 transition-colors"
-                            title="Finalizar Serviço"
+                            title="Finalizar Serviço (+1 ponto de fidelidade)"
                           >
                             <CheckCircle2 size={16} className="text-blue-500" />
                           </button>
@@ -444,6 +666,218 @@ export default function AgendamentosPage() {
           </div>
         )}
       </div>
+
+      {/* Modal: Lançar Nova Lavagem (Entrada de Veículo / Balcão) */}
+      {isNewWashOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+          <div className="w-full max-w-lg bg-white dark:bg-gray-950 border border-gray-150 dark:border-gray-800 rounded-2xl p-6 shadow-2xl animate-in fade-in zoom-in-95 duration-150">
+            <div className="flex items-center justify-between mb-5">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2 rounded-xl bg-blue-600/10 text-blue-600 dark:text-blue-400">
+                  <Car size={20} />
+                </div>
+                <div>
+                  <h2 className="text-lg font-bold text-gray-900 dark:text-white">Lançar Nova Lavagem</h2>
+                  <p className="text-xs text-gray-500 dark:text-gray-400">Entrada de veículo presencial / balcão</p>
+                </div>
+              </div>
+              <button 
+                onClick={() => setIsNewWashOpen(false)}
+                className="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-900 text-gray-400 hover:text-gray-700 dark:hover:text-white"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            {washError && (
+              <div className="mb-4 p-3 rounded-xl bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-800 text-xs text-red-800 dark:text-red-400">
+                {washError}
+              </div>
+            )}
+
+            <form onSubmit={handleCreateWash} className="space-y-4 text-left">
+              {/* WhatsApp e Nome */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1">
+                    WhatsApp / Celular *
+                  </label>
+                  <div className="relative rounded-xl shadow-sm">
+                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                      <Phone className="h-4 w-4 text-gray-400" />
+                    </div>
+                    <input
+                      type="tel"
+                      required
+                      placeholder="Ex: 38999999999"
+                      value={customerPhone}
+                      onChange={(e) => setCustomerPhone(e.target.value)}
+                      onBlur={handlePhoneBlur}
+                      className="block w-full pl-10 pr-3 py-2.5 border border-gray-200 dark:border-gray-800 rounded-xl bg-white dark:bg-gray-900 text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
+                    />
+                  </div>
+                  <span className="text-[10px] text-gray-400">Preencha para auto-completar</span>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1">
+                    Nome do Cliente *
+                  </label>
+                  <div className="relative rounded-xl shadow-sm">
+                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                      <User className="h-4 w-4 text-gray-400" />
+                    </div>
+                    <input
+                      type="text"
+                      required
+                      placeholder="Nome do cliente"
+                      value={customerName}
+                      onChange={(e) => setCustomerName(e.target.value)}
+                      className="block w-full pl-10 pr-3 py-2.5 border border-gray-200 dark:border-gray-800 rounded-xl bg-white dark:bg-gray-900 text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Placa e CPF */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1">
+                    Placa do Veículo *
+                  </label>
+                  <div className="relative rounded-xl shadow-sm">
+                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                      <Tag className="h-4 w-4 text-gray-400" />
+                    </div>
+                    <input
+                      type="text"
+                      required
+                      placeholder="Ex: ABC1D23"
+                      value={vehiclePlate}
+                      onChange={(e) => setVehiclePlate(e.target.value.toUpperCase())}
+                      className="block w-full pl-10 pr-3 py-2.5 border border-gray-200 dark:border-gray-800 rounded-xl bg-white dark:bg-gray-900 text-gray-900 dark:text-white text-sm font-mono uppercase focus:outline-none focus:ring-1 focus:ring-blue-500"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1">
+                    CPF na Nota (Opcional)
+                  </label>
+                  <div className="relative rounded-xl shadow-sm">
+                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                      <FileText className="h-4 w-4 text-gray-400" />
+                    </div>
+                    <input
+                      type="text"
+                      maxLength={11}
+                      placeholder="Apenas números"
+                      value={customerCpf}
+                      onChange={(e) => setCustomerCpf(e.target.value.replace(/\D/g, ''))}
+                      className="block w-full pl-10 pr-3 py-2.5 border border-gray-200 dark:border-gray-800 rounded-xl bg-white dark:bg-gray-900 text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Serviço e Valor */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1">
+                    Serviço a Realizar *
+                  </label>
+                  <select
+                    value={selectedServiceId}
+                    onChange={(e) => handleServiceChange(e.target.value)}
+                    className="block w-full px-3 py-2.5 border border-gray-200 dark:border-gray-800 rounded-xl bg-white dark:bg-gray-900 text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  >
+                    {services.map(s => (
+                      <option key={s.id} value={s.id}>
+                        {s.name} (R$ {Number(s.price).toFixed(2)})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1">
+                    Valor Cobrado (R$) *
+                  </label>
+                  <div className="relative rounded-xl shadow-sm">
+                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                      <DollarSign className="h-4 w-4 text-gray-400" />
+                    </div>
+                    <input
+                      type="number"
+                      step="0.01"
+                      min={0}
+                      required
+                      value={customPrice}
+                      onChange={(e) => setCustomPrice(e.target.value)}
+                      className="block w-full pl-10 pr-3 py-2.5 border border-gray-200 dark:border-gray-800 rounded-xl bg-white dark:bg-gray-900 text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 font-semibold"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Data/Hora e Status Inicial */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1">
+                    Data e Horário
+                  </label>
+                  <input
+                    type="datetime-local"
+                    value={scheduledAt}
+                    onChange={(e) => setScheduledAt(e.target.value)}
+                    className="block w-full px-3 py-2.5 border border-gray-200 dark:border-gray-800 rounded-xl bg-white dark:bg-gray-900 text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1">
+                    Status da Lavagem
+                  </label>
+                  <select
+                    value={initialStatus}
+                    onChange={(e) => setInitialStatus(e.target.value as 'CONFIRMADO' | 'FINALIZADO' | 'PENDENTE')}
+                    className="block w-full px-3 py-2.5 border border-gray-200 dark:border-gray-800 rounded-xl bg-white dark:bg-gray-900 text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 font-semibold"
+                  >
+                    <option value="CONFIRMADO">🟡 Confirmado (Na Fila / Lavando)</option>
+                    <option value="FINALIZADO">🟢 Finalizado (Concluído & Pago)</option>
+                    <option value="PENDENTE">⚪ Pendente</option>
+                  </select>
+                </div>
+              </div>
+
+              {initialStatus === 'FINALIZADO' && (
+                <div className="p-3 rounded-xl bg-blue-50 dark:bg-blue-950/20 border border-blue-100 dark:border-blue-900 text-xs text-blue-900 dark:text-blue-300 flex items-center gap-2">
+                  <Sparkles size={16} className="text-blue-500 shrink-0" />
+                  <span>Esta lavagem creditará <strong>+1 ponto de fidelidade</strong> automaticamente para o cliente.</span>
+                </div>
+              )}
+
+              {/* Botões do Modal */}
+              <div className="flex items-center justify-end gap-3 pt-4 border-t border-gray-150 dark:border-gray-800">
+                <button
+                  type="button"
+                  onClick={() => setIsNewWashOpen(false)}
+                  className="px-4 py-2 rounded-xl border border-gray-200 dark:border-gray-800 text-sm font-semibold text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-900"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={submittingWash}
+                  className="px-5 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white text-sm font-semibold flex items-center justify-center gap-1.5 shadow-md shadow-blue-500/15 transition-all"
+                >
+                  {submittingWash ? 'Lançando...' : 'Lançar Entrada'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       {/* Via de Impressão Térmica (Ordem de Serviço - 80mm / 58mm) */}
       {printApp && (
