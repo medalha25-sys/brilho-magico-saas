@@ -1,8 +1,6 @@
-const CACHE_NAME = 'brilho-magico-pwa-v2';
+const CACHE_NAME = 'brilho-magico-pwa-v3';
 
 const STATIC_ASSETS = [
-  '/',
-  '/agendar/brilho-magico',
   '/manifest.json',
   '/logo.jpg',
   '/icon-72.png',
@@ -16,7 +14,6 @@ const STATIC_ASSETS = [
   '/apple-touch-icon.png'
 ];
 
-// Instalação do Service Worker e cache dos recursos essenciais
 self.addEventListener('install', (event) => {
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => {
@@ -26,7 +23,6 @@ self.addEventListener('install', (event) => {
   self.skipWaiting();
 });
 
-// Ativação e limpeza de caches antigos
 self.addEventListener('activate', (event) => {
   event.waitUntil(
     caches.keys().then((keys) => {
@@ -42,9 +38,14 @@ self.addEventListener('activate', (event) => {
   self.clients.claim();
 });
 
-// Interceptação de requisições com estratégia Network-First e fallback de cache
 self.addEventListener('fetch', (event) => {
   if (event.request.method !== 'GET' || !event.request.url.startsWith('http')) {
+    return;
+  }
+
+  // Não intercepta chamadas de API, Supabase ou rotas do painel /admin para garantir dados e páginas sempre 100% atualizados
+  const url = new URL(event.request.url);
+  if (url.pathname.startsWith('/admin') || url.pathname.startsWith('/api') || url.hostname.includes('supabase')) {
     return;
   }
 
@@ -65,9 +66,7 @@ self.addEventListener('fetch', (event) => {
           return cachedResponse;
         }
         if (event.request.mode === 'navigate') {
-          const fallbackPage = await caches.match('/agendar/brilho-magico');
-          if (fallbackPage) return fallbackPage;
-          return caches.match('/');
+          return caches.match('/agendar/brilho-magico');
         }
       })
   );
