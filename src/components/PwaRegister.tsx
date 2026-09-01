@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useEffect, useState } from 'react';
-import { Download, X, Smartphone } from 'lucide-react';
+import { Download, X, Smartphone, Sparkles, PlusSquare, MoreVertical } from 'lucide-react';
 
 interface BeforeInstallPromptEvent extends Event {
   prompt: () => Promise<void>;
@@ -10,9 +10,10 @@ interface BeforeInstallPromptEvent extends Event {
 
 export function PwaRegister() {
   const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(null);
-  const [showInstallBanner, setShowInstallBanner] = useState(false);
+  const [showReminder, setShowReminder] = useState(false);
   const [isIOS, setIsIOS] = useState(false);
   const [showIOSModal, setShowIOSModal] = useState(false);
+  const [showAndroidModal, setShowAndroidModal] = useState(false);
   const [isInstalled, setIsInstalled] = useState(false);
 
   useEffect(() => {
@@ -22,7 +23,7 @@ export function PwaRegister() {
         navigator.serviceWorker
           .register('/sw.js')
           .then((reg) => {
-            console.log('✅ PWA Service Worker registrado com sucesso:', reg.scope);
+            console.log('✅ PWA Service Worker ativo:', reg.scope);
           })
           .catch((err) => {
             console.warn('Aviso ao registrar Service Worker:', err);
@@ -30,55 +31,94 @@ export function PwaRegister() {
       });
     }
 
-    // 2. Verifica se o app já está em modo PWA standalone (instalado)
-    if (typeof window !== 'undefined') {
-      const isStandalone = 
-        window.matchMedia('(display-mode: standalone)').matches ||
-        (window.navigator as unknown as { standalone?: boolean }).standalone === true;
+    if (typeof window === 'undefined') return;
 
-      if (isStandalone) {
-        // eslint-disable-next-line react-hooks/set-state-in-effect
-        setIsInstalled(true);
-        return;
-      }
+    // 2. Verifica se o app já está rodando como PWA instalado (Standalone)
+    const isStandalone = 
+      window.matchMedia('(display-mode: standalone)').matches ||
+      (window.navigator as unknown as { standalone?: boolean }).standalone === true;
 
-      // Detecta iOS
-      const userAgent = window.navigator.userAgent.toLowerCase();
-      const isAppleDevice = /iphone|ipad|ipod/.test(userAgent);
-      setIsIOS(isAppleDevice);
-
-      // Captura o evento nativo de instalação do Android / Chrome / Edge
-      const handleBeforeInstallPrompt = (e: Event) => {
-        e.preventDefault();
-        setDeferredPrompt(e as BeforeInstallPromptEvent);
-        setShowInstallBanner(true);
-      };
-
-      window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
-
-      // Oculta banner se foi instalado com sucesso
-      window.addEventListener('appinstalled', () => {
-        setShowInstallBanner(false);
-        setIsInstalled(true);
-        setDeferredPrompt(null);
-      });
-
-      return () => {
-        window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
-      };
+    if (isStandalone) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setIsInstalled(true);
+      return;
     }
+
+    // Detecta se é dispositivo móvel (celular ou tablet)
+    const userAgent = window.navigator.userAgent.toLowerCase();
+    const isApple = /iphone|ipad|ipod/.test(userAgent);
+    const isMobile = /android|iphone|ipad|ipod|mobile|blackberry|iemobile|opera mini/.test(userAgent) || window.innerWidth < 768;
+    setIsIOS(isApple);
+
+    // Captura o evento nativo de instalação do Chrome / Android
+    const handleBeforeInstallPrompt = (e: Event) => {
+      e.preventDefault();
+      setDeferredPrompt(e as BeforeInstallPromptEvent);
+    };
+
+    window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+
+    // Quando o app é instalado
+    window.addEventListener('appinstalled', () => {
+      setShowReminder(false);
+      setIsInstalled(true);
+      setDeferredPrompt(null);
+    });
+
+    // 3. Exibe o lembrete amigável no celular após 2.5 segundos (se o usuário não tiver dispensado recentemente)
+    if (isMobile) {
+      const dismissedUntil = localStorage.getItem('pwa_reminder_dismissed_until');
+      const now = Date.now();
+
+      if (!dismissedUntil || now > parseInt(dismissedUntil, 10)) {
+        const timer = setTimeout(() => {
+          setShowReminder(true);
+        }, 2500);
+
+        return () => {
+          clearTimeout(timer);
+          window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+        };
+      }
+    }
+
+    return () => {
+      window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+    };
   }, []);
 
+  // Ao clicar em "Adicionar Atalho" / "Instalar"
   const handleInstallClick = async () => {
     if (deferredPrompt) {
-      deferredPrompt.prompt();
-      const { outcome } = await deferredPrompt.userChoice;
-      if (outcome === 'accepted') {
-        setShowInstallBanner(false);
-        setDeferredPrompt(null);
+      try {
+        deferredPrompt.prompt();
+        const { outcome } = await deferredPrompt.userChoice;
+        if (outcome === 'accepted') {
+          setShowReminder(false);
+          setDeferredPrompt(null);
+          return;
+        }
+      } catch (err) {
+        console.log(err);
       }
-    } else if (isIOS) {
+    }
+
+    // Se for iOS ou navegador Android sem prompt direto
+    if (isIOS) {
       setShowIOSModal(true);
+    } else {
+      setShowAndroidModal(true);
+    }
+  };
+
+  // Dispensar lembrete de forma não intrusiva (lembra por 3 dias)
+  const handleDismiss = () => {
+    setShowReminder(false);
+    try {
+      const threeDaysFromNow = Date.now() + 3 * 24 * 60 * 60 * 1000;
+      localStorage.setItem('pwa_reminder_dismissed_until', threeDaysFromNow.toString());
+    } catch (e) {
+      console.log(e);
     }
   };
 
@@ -86,46 +126,62 @@ export function PwaRegister() {
 
   return (
     <>
-      {/* Banner Flutuante de Instalação do PWA */}
-      {showInstallBanner && (
-        <div className="fixed bottom-4 left-4 right-4 md:left-auto md:right-4 md:w-96 z-50 animate-in fade-in slide-in-from-bottom-5 duration-300">
-          <div className="p-4 rounded-2xl bg-neutral-900/95 dark:bg-gray-950/95 border border-green-500/30 text-white shadow-2xl backdrop-blur-md flex items-center justify-between gap-3">
-            <div className="flex items-center gap-3 overflow-hidden">
-              <img 
-                src="/logo.jpg" 
-                alt="Logo" 
-                className="w-10 h-10 rounded-xl object-cover border border-neutral-700 shrink-0" 
-              />
-              <div className="flex flex-col text-left overflow-hidden">
-                <span className="text-xs font-bold text-white truncate">
-                  Instalar Aplicativo
-                </span>
-                <span className="text-[10px] text-neutral-400 truncate">
-                  Acesse com 1 toque na sua tela inicial
-                </span>
+      {/* Lembrete Amigável e Discreto Flutuante no Celular */}
+      {showReminder && (
+        <aside 
+          aria-label="Lembrete de instalação do aplicativo"
+          className="fixed bottom-3 left-3 right-3 sm:left-auto sm:right-4 sm:w-96 z-50 animate-in fade-in slide-in-from-bottom-5 duration-300 pointer-events-auto"
+        >
+          <div className="p-4 rounded-2xl bg-neutral-900/95 dark:bg-gray-950/95 border border-green-500/30 text-white shadow-2xl backdrop-blur-md relative overflow-hidden">
+            {/* Barra de destaque superior sutil */}
+            <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-green-500 via-emerald-400 to-green-600"></div>
+
+            <div className="flex items-start justify-between gap-2 mb-2 pt-0.5">
+              <div className="flex items-center gap-2">
+                <div className="w-7 h-7 rounded-lg bg-green-500/10 text-green-400 flex items-center justify-center shrink-0">
+                  <Smartphone size={16} />
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <span className="text-xs font-bold text-white">Dica: Adicione o Atalho</span>
+                  <Sparkles size={12} className="text-amber-400" />
+                </div>
               </div>
+
+              <button
+                onClick={handleDismiss}
+                className="p-1 rounded-lg text-neutral-400 hover:text-white hover:bg-neutral-800 transition-colors"
+                title="Fechar lembrete"
+                aria-label="Fechar"
+              >
+                <X size={15} />
+              </button>
             </div>
 
-            <div className="flex items-center gap-2 shrink-0">
+            <p className="text-[11px] text-neutral-300 leading-relaxed mb-3">
+              Tenha o aplicativo da <strong>Brilho Mágico</strong> na tela do seu celular para agendar lavagens em 1 toque, sem precisar abrir o navegador.
+            </p>
+
+            <div className="flex items-center gap-2">
               <button
                 onClick={handleInstallClick}
-                className="px-3 py-1.5 rounded-xl bg-green-600 hover:bg-green-500 text-neutral-950 font-bold text-xs flex items-center gap-1 shadow-md shadow-green-500/20 transition-colors"
+                className="flex-1 py-2 px-3 rounded-xl bg-green-600 hover:bg-green-500 text-neutral-950 font-bold text-xs flex items-center justify-center gap-1.5 shadow-md shadow-green-500/20 transition-all active:scale-95"
               >
-                <Download size={13} /> Instalar
+                <Download size={13} />
+                <span>Adicionar à Tela</span>
               </button>
+
               <button
-                onClick={() => setShowInstallBanner(false)}
-                className="p-1.5 rounded-lg text-neutral-400 hover:text-white hover:bg-neutral-800 transition-colors"
-                title="Fechar"
+                onClick={handleDismiss}
+                className="py-2 px-3 rounded-xl bg-neutral-800 hover:bg-neutral-750 text-neutral-400 hover:text-neutral-200 text-xs font-medium transition-colors"
               >
-                <X size={16} />
+                Agora não
               </button>
             </div>
           </div>
-        </div>
+        </aside>
       )}
 
-      {/* Modal explicativo de instalação para iPhone / iPad (Safari) */}
+      {/* Modal Explicativo para iPhone / iPad (Safari) */}
       {showIOSModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-xs">
           <div className="w-full max-w-sm bg-neutral-900 border border-neutral-800 rounded-3xl p-6 shadow-2xl text-left animate-in fade-in zoom-in-95 duration-150">
@@ -134,7 +190,7 @@ export function PwaRegister() {
                 <div className="p-2 rounded-xl bg-green-500/10 text-green-500">
                   <Smartphone size={18} />
                 </div>
-                <h3 className="font-bold text-white text-sm">Instalar no iPhone / iPad</h3>
+                <h3 className="font-bold text-white text-sm">Adicionar no iPhone / iPad</h3>
               </div>
               <button 
                 onClick={() => setShowIOSModal(false)}
@@ -145,26 +201,78 @@ export function PwaRegister() {
             </div>
 
             <div className="space-y-3 text-xs text-neutral-300 leading-relaxed">
-              <p>Para instalar o aplicativo no seu dispositivo Apple:</p>
+              <p className="text-neutral-400">É super simples adicionar o atalho ao seu iPhone:</p>
               
-              <div className="p-3 rounded-xl bg-neutral-950 border border-neutral-800 space-y-2">
-                <div className="flex items-start gap-2">
-                  <span className="w-5 h-5 rounded-full bg-neutral-800 text-green-400 flex items-center justify-center font-bold text-[10px] shrink-0 mt-0.5">1</span>
-                  <span>Toque no botão <strong>Compartilhar</strong> (ícone do quadrado com seta para cima 📤 no Safari).</span>
+              <div className="p-3.5 rounded-2xl bg-neutral-950 border border-neutral-800 space-y-2.5">
+                <div className="flex items-start gap-2.5">
+                  <span className="w-5 h-5 rounded-full bg-green-500/20 text-green-400 flex items-center justify-center font-bold text-[10px] shrink-0 mt-0.5">1</span>
+                  <span>Toque no botão <strong>Compartilhar</strong> (ícone do quadrado com a setinha para cima 📤 no rodapé do Safari).</span>
                 </div>
-                <div className="flex items-start gap-2">
-                  <span className="w-5 h-5 rounded-full bg-neutral-800 text-green-400 flex items-center justify-center font-bold text-[10px] shrink-0 mt-0.5">2</span>
-                  <span>Role para baixo e selecione <strong>&quot;Adicionar à Tela de Início&quot; 📱</strong>.</span>
+                <div className="flex items-start gap-2.5">
+                  <span className="w-5 h-5 rounded-full bg-green-500/20 text-green-400 flex items-center justify-center font-bold text-[10px] shrink-0 mt-0.5">2</span>
+                  <span>Role para baixo nas opções e toque em <strong>&quot;Adicionar à Tela de Início&quot; 📱</strong>.</span>
                 </div>
-                <div className="flex items-start gap-2">
-                  <span className="w-5 h-5 rounded-full bg-neutral-800 text-green-400 flex items-center justify-center font-bold text-[10px] shrink-0 mt-0.5">3</span>
-                  <span>Toque em <strong>Adicionar</strong> no canto superior direito.</span>
+                <div className="flex items-start gap-2.5">
+                  <span className="w-5 h-5 rounded-full bg-green-500/20 text-green-400 flex items-center justify-center font-bold text-[10px] shrink-0 mt-0.5">3</span>
+                  <span>Toque em <strong>Adicionar</strong> no canto superior direito. Pronto!</span>
                 </div>
               </div>
             </div>
 
             <button
               onClick={() => setShowIOSModal(false)}
+              className="mt-5 w-full py-2.5 bg-green-600 hover:bg-green-500 text-neutral-950 font-bold rounded-xl text-xs transition-colors"
+            >
+              Entendido
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Explicativo para Android (quando não dispara direto pelo navegador) */}
+      {showAndroidModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-xs">
+          <div className="w-full max-w-sm bg-neutral-900 border border-neutral-800 rounded-3xl p-6 shadow-2xl text-left animate-in fade-in zoom-in-95 duration-150">
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-2">
+                <div className="p-2 rounded-xl bg-green-500/10 text-green-500">
+                  <Smartphone size={18} />
+                </div>
+                <h3 className="font-bold text-white text-sm">Adicionar no Android</h3>
+              </div>
+              <button 
+                onClick={() => setShowAndroidModal(false)}
+                className="p-1 rounded-lg text-neutral-400 hover:text-white"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="space-y-3 text-xs text-neutral-300 leading-relaxed">
+              <p className="text-neutral-400">Para fixar o app na tela do seu celular:</p>
+              
+              <div className="p-3.5 rounded-2xl bg-neutral-950 border border-neutral-800 space-y-2.5">
+                <div className="flex items-start gap-2.5">
+                  <div className="w-5 h-5 rounded-full bg-green-500/20 text-green-400 flex items-center justify-center font-bold text-[10px] shrink-0 mt-0.5">
+                    <MoreVertical size={11} />
+                  </div>
+                  <span>Toque nos <strong>três pontinhos (⋮)</strong> no canto superior do seu navegador (Chrome/Samsung).</span>
+                </div>
+                <div className="flex items-start gap-2.5">
+                  <div className="w-5 h-5 rounded-full bg-green-500/20 text-green-400 flex items-center justify-center font-bold text-[10px] shrink-0 mt-0.5">
+                    <PlusSquare size={11} />
+                  </div>
+                  <span>Selecione <strong>&quot;Adicionar à tela inicial&quot;</strong> ou <strong>&quot;Instalar aplicativo&quot;</strong>.</span>
+                </div>
+                <div className="flex items-start gap-2.5">
+                  <span className="w-5 h-5 rounded-full bg-green-500/20 text-green-400 flex items-center justify-center font-bold text-[10px] shrink-0 mt-0.5">3</span>
+                  <span>Confirme em <strong>Adicionar</strong>. O ícone aparecerá direto no seu menu de apps!</span>
+                </div>
+              </div>
+            </div>
+
+            <button
+              onClick={() => setShowAndroidModal(false)}
               className="mt-5 w-full py-2.5 bg-green-600 hover:bg-green-500 text-neutral-950 font-bold rounded-xl text-xs transition-colors"
             >
               Entendido
