@@ -224,7 +224,7 @@ export default function AgendamentosPage() {
       try {
         const { data: customerList } = await supabase
           .from('customers')
-          .select('id, phone, points')
+          .select('id, phone')
           .eq('tenant_id', tenantId);
 
         const matched = (customerList || []).find(c => {
@@ -234,18 +234,15 @@ export default function AgendamentosPage() {
         });
 
         if (matched) {
-          const addPt = initialStatus === 'FINALIZADO' ? 1 : 0;
           await supabase
             .from('customers')
             .update({
               name: customerName,
               vehicle_plate: cleanPlate,
-              cpf: cleanCpf,
-              points: Number(matched.points || 0) + addPt
+              cpf: cleanCpf
             })
             .eq('id', matched.id);
         } else {
-          const initPts = initialStatus === 'FINALIZADO' ? 1 : 0;
           await supabase
             .from('customers')
             .insert({
@@ -253,8 +250,7 @@ export default function AgendamentosPage() {
               name: customerName,
               phone: cleanPhone,
               vehicle_plate: cleanPlate,
-              cpf: cleanCpf,
-              points: initPts
+              cpf: cleanCpf
             });
         }
       } catch (custErr) {
@@ -309,7 +305,7 @@ export default function AgendamentosPage() {
       if (error) {
         alert("Erro ao atualizar status: " + error.message);
       } else {
-        // Se o agendamento foi finalizado, credita automaticamente +1 ponto de fidelidade para o cliente
+        // Se o agendamento foi finalizado, garante que o cliente está cadastrado na tabela de clientes
         if (newStatus === 'FINALIZADO' && targetApp) {
           try {
             const rawPhone = targetApp.customer_phone.trim();
@@ -319,8 +315,7 @@ export default function AgendamentosPage() {
             if (activeTenantId) {
               const { data: customerList } = await supabase
                 .from('customers')
-                .select('id, name, phone, points')
-                .eq('tenant_id', activeTenantId);
+                .select('id, name, phone');
 
               const matchedCustomer = (customerList || []).find(c => {
                 const cDigits = (c.phone || '').replace(/\D/g, '');
@@ -331,26 +326,19 @@ export default function AgendamentosPage() {
                 );
               });
 
-              if (matchedCustomer) {
-                const currentPts = Number(matchedCustomer.points || 0);
-                await supabase
-                  .from('customers')
-                  .update({ points: currentPts + 1 })
-                  .eq('id', matchedCustomer.id);
-              } else {
+              if (!matchedCustomer) {
                 await supabase
                   .from('customers')
                   .insert({
                     tenant_id: activeTenantId,
                     name: targetApp.customer_name,
                     phone: rawPhone,
-                    vehicle_plate: targetApp.vehicle_plate || null,
-                    points: 1
+                    vehicle_plate: targetApp.vehicle_plate || null
                   });
               }
             }
           } catch (pErr) {
-            console.warn("Aviso ao pontuar cliente de fidelidade:", pErr);
+            console.warn("Aviso ao sincronizar cliente:", pErr);
           }
         }
 

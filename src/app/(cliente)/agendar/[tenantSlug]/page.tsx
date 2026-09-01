@@ -392,7 +392,7 @@ export default function BookingPage({ params }: { params: Promise<{ tenantSlug: 
         if (tenantData?.id) {
           const { data: customerList } = await supabase
             .from('customers')
-            .select('name, phone, vehicle_plate, cpf, points')
+            .select('name, phone, vehicle_plate, cpf, notes')
             .eq('tenant_id', tenantData.id);
 
           const existingCust = (customerList || []).find(c => {
@@ -400,17 +400,25 @@ export default function BookingPage({ params }: { params: Promise<{ tenantSlug: 
             return cClean === cleanPhone || cClean.endsWith(cleanPhone.slice(-10));
           });
 
-          // Busca agendamentos finalizados para garantir o saldo de pontos
+          // Busca agendamentos finalizados para garantir o saldo real de pontos
           const { data: finalizedApps } = await supabase
             .from('appointments')
             .select('customer_name, customer_phone, vehicle_plate, customer_cpf')
-            .eq('tenant_id', tenantData.id)
             .eq('status', 'FINALIZADO');
 
           const finalMatches = (finalizedApps || []).filter(a => {
             const aClean = (a.customer_phone || '').replace(/\D/g, '');
             return aClean === cleanPhone || aClean.endsWith(cleanPhone.slice(-10));
           });
+
+          // Extrai pontos resgatados
+          let redeemed = 0;
+          if (existingCust?.notes) {
+            const match = existingCust.notes.match(/\[RESGAT(?:E|ADO):\s*(\d+)\]/i);
+            if (match) redeemed = parseInt(match[1], 10) || 0;
+          }
+
+          const calculatedPoints = Math.max(0, finalMatches.length - redeemed);
 
           if (existingCust) {
             if (!customerName && existingCust.name) setCustomerName(existingCust.name);
@@ -419,12 +427,11 @@ export default function BookingPage({ params }: { params: Promise<{ tenantSlug: 
               setCustomerCpf(existingCust.cpf);
               setWantCpf(true);
             }
-            const stored = Number(existingCust.points || 0);
-            setCustomerPoints(stored > 0 ? stored : finalMatches.length);
+            setCustomerPoints(calculatedPoints);
           } else if (finalMatches.length > 0) {
             if (!customerName && finalMatches[0].customer_name) setCustomerName(finalMatches[0].customer_name);
             if (!vehiclePlate && finalMatches[0].vehicle_plate) setVehiclePlate(finalMatches[0].vehicle_plate);
-            setCustomerPoints(finalMatches.length);
+            setCustomerPoints(calculatedPoints);
           }
         }
       } catch (e) {
@@ -465,13 +472,12 @@ export default function BookingPage({ params }: { params: Promise<{ tenantSlug: 
       try {
         const { data: existingCust } = await supabase
           .from('customers')
-          .select('id, points')
+          .select('id')
           .eq('tenant_id', tenantData.id)
           .eq('phone', cleanPhone)
           .maybeSingle();
 
         if (existingCust?.id) {
-          setCustomerPoints(Number(existingCust.points || 0));
           await supabase
             .from('customers')
             .update({
@@ -481,7 +487,6 @@ export default function BookingPage({ params }: { params: Promise<{ tenantSlug: 
             })
             .eq('id', existingCust.id);
         } else {
-          setCustomerPoints(0);
           await supabase
             .from('customers')
             .insert({
@@ -489,8 +494,7 @@ export default function BookingPage({ params }: { params: Promise<{ tenantSlug: 
               name: customerName,
               phone: cleanPhone,
               vehicle_plate: cleanPlate,
-              cpf: cleanCpf,
-              points: 0
+              cpf: cleanCpf
             });
         }
       } catch (custErr) {

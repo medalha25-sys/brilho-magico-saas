@@ -108,20 +108,20 @@ export default function ClientesPage() {
         const tId = profile.tenant_id;
         setTenantId(tId);
 
-        // 1. Busca todos os agendamentos do tenant (para obter todos os clientes que já agendaram)
+        // 1. Busca todos os agendamentos (para obter todas as lavagens finalizadas)
         const { data: allAppointments } = await supabase
           .from('appointments')
           .select('id, customer_name, customer_phone, customer_cpf, vehicle_plate, status, created_at')
-          .eq('tenant_id', tId)
           .order('created_at', { ascending: false });
 
-        // Mapeia pontuação de lavagens finalizadas por telefone
+        // Mapeia lavagens finalizadas por telefone (usando os últimos 10 dígitos para evitar inconsistências de DDD/formatação)
         const finalizedCountByPhone = new Map<string, number>();
         (allAppointments || []).forEach(app => {
           if (app.status === 'FINALIZADO') {
             const clean = (app.customer_phone || '').replace(/\D/g, '');
-            if (clean) {
-              finalizedCountByPhone.set(clean, (finalizedCountByPhone.get(clean) || 0) + 1);
+            const key = clean.length >= 10 ? clean.slice(-10) : (clean || app.customer_name);
+            if (key) {
+              finalizedCountByPhone.set(key, (finalizedCountByPhone.get(key) || 0) + 1);
             }
           }
         });
@@ -130,29 +130,33 @@ export default function ClientesPage() {
         const { data: customData } = await supabase
           .from('customers')
           .select('*')
-          .eq('tenant_id', tId)
           .order('name', { ascending: true });
 
         const customerMap = new Map<string, Customer>();
 
-        // Adiciona os clientes cadastrados formalmente na tabela customers
+        // Processa os clientes da tabela customers
         (customData || []).forEach(c => {
-          const clean = (c.phone || '').replace(/\D/g, '') || c.name;
-          const finalAppsCount = finalizedCountByPhone.get(clean) || 0;
-          let realPts = Number(c.points || 0);
-          if (realPts === 0 && finalAppsCount > 0) {
-            realPts = finalAppsCount;
-            supabase.from('customers').update({ points: realPts }).eq('id', c.id).then();
+          const clean = (c.phone || '').replace(/\D/g, '');
+          const key = clean.length >= 10 ? clean.slice(-10) : (clean || c.name);
+          const finalAppsCount = finalizedCountByPhone.get(key) || 0;
+
+          // Extrai resgates salvos nas observações (ex: [RESGATE: 10])
+          let redeemed = 0;
+          if (c.notes) {
+            const match = c.notes.match(/\[RESGAT(?:E|ADO):\s*(\d+)\]/i);
+            if (match) redeemed = parseInt(match[1], 10) || 0;
           }
 
-          const isCompany = c.cpf && c.cpf.replace(/\D/g, '').length === 14 || (c.notes && c.notes.includes('[EMPRESA]'));
+          const realPts = Math.max(0, finalAppsCount - redeemed);
+
+          const isCompany = (c.cpf && c.cpf.replace(/\D/g, '').length === 14) || (c.notes && c.notes.includes('[EMPRESA]'));
           let contact = '';
           if (c.notes && c.notes.includes('Resp: ')) {
             const match = c.notes.match(/Resp:\s*([^\n;]+)/);
             if (match) contact = match[1].trim();
           }
 
-          customerMap.set(clean, {
+          customerMap.set(key, {
             ...c,
             is_company: isCompany,
             contact_person: contact,
@@ -160,11 +164,13 @@ export default function ClientesPage() {
           });
         });
 
-        // Mescla clientes que vieram dos agendamentos e ainda não constam na tabela customers
+        // Mescla clientes que vieram dos agendamentos e ainda não estavam na lista
         (allAppointments || []).forEach(app => {
-          const clean = (app.customer_phone || '').replace(/\D/g, '') || app.customer_name;
-          if (!customerMap.has(clean)) {
-            const finalAppsCount = finalizedCountByPhone.get(clean) || 0;
+          const clean = (app.customer_phone || '').replace(/\D/g, '');
+          const key = clean.length >= 10 ? clean.slice(-10) : (clean || app.customer_name);
+
+          if (!customerMap.has(key)) {
+            const finalAppsCount = finalizedCountByPhone.get(key) || 0;
             const newEntry: Customer = {
               id: app.id,
               name: app.customer_name,
@@ -178,19 +184,18 @@ export default function ClientesPage() {
               points: finalAppsCount,
               created_at: app.created_at
             };
-            customerMap.set(clean, newEntry);
+            customerMap.set(key, newEntry);
 
-            // Auto-insere na tabela customers para persistir no banco
+            // Auto-insere na tabela customers sem enviar a coluna points
             supabase.from('customers').insert({
               tenant_id: tId,
               name: app.customer_name,
               phone: app.customer_phone,
               cpf: app.customer_cpf || null,
-              vehicle_plate: app.vehicle_plate || null,
-              points: finalAppsCount
+              vehicle_plate: app.vehicle_plate || null
             }).then();
           } else {
-            const existing = customerMap.get(clean)!;
+            const existing = customerMap.get(key)!;
             if (!existing.vehicle_plate && app.vehicle_plate) {
               existing.vehicle_plate = app.vehicle_plate;
             }
@@ -278,13 +283,24 @@ export default function ClientesPage() {
     const newPoints = currentPts - cost;
 
     try {
+      // Atualiza o registro de resgate nas observações do cliente
+      let currentNotes = selectedCustomer.notes || '';
+      let alreadyRedeemed = 0;
+      const match = currentNotes.match(/\[RESGAT(?:E|ADO):\s*(\d+)\]/i);
+      if (match) {
+        alreadyRedeemed = parseInt(match[1], 10) || 0;
+        currentNotes = currentNotes.replace(/\[RESGAT(?:E|ADO):\s*(\d+)\]/i, '').trim();
+      }
+      const newTotalRedeemed = alreadyRedeemed + cost;
+      const updatedNotes = `[RESGATE: ${newTotalRedeemed}] ${currentNotes}`.trim();
+
       await supabase
         .from('customers')
-        .update({ points: newPoints })
+        .update({ notes: updatedNotes })
         .eq('id', selectedCustomer.id);
 
-      setCustomers(prev => prev.map(c => c.id === selectedCustomer.id ? { ...c, points: newPoints } : c));
-      setSelectedCustomer(prev => prev ? { ...prev, points: newPoints } : null);
+      setCustomers(prev => prev.map(c => c.id === selectedCustomer.id ? { ...c, notes: updatedNotes, points: newPoints } : c));
+      setSelectedCustomer(prev => prev ? { ...prev, notes: updatedNotes, points: newPoints } : null);
       setRedeemSuccess(`🎉 ${prizeName} resgatado com sucesso! Saldo atualizado para ${newPoints} pontos.`);
     } catch (err) {
       console.error(err);
@@ -299,13 +315,25 @@ export default function ClientesPage() {
     const newPoints = Math.max(0, currentPts + delta);
 
     try {
+      let currentNotes = selectedCustomer.notes || '';
+      let alreadyRedeemed = 0;
+      const match = currentNotes.match(/\[RESGAT(?:E|ADO):\s*(\d+)\]/i);
+      if (match) {
+        alreadyRedeemed = parseInt(match[1], 10) || 0;
+        currentNotes = currentNotes.replace(/\[RESGAT(?:E|ADO):\s*(\d+)\]/i, '').trim();
+      }
+      const newTotalRedeemed = Math.max(0, alreadyRedeemed - delta);
+      const updatedNotes = newTotalRedeemed > 0 
+        ? `[RESGATE: ${newTotalRedeemed}] ${currentNotes}`.trim() 
+        : currentNotes;
+
       await supabase
         .from('customers')
-        .update({ points: newPoints })
+        .update({ notes: updatedNotes || null })
         .eq('id', selectedCustomer.id);
 
-      setCustomers(prev => prev.map(c => c.id === selectedCustomer.id ? { ...c, points: newPoints } : c));
-      setSelectedCustomer(prev => prev ? { ...prev, points: newPoints } : null);
+      setCustomers(prev => prev.map(c => c.id === selectedCustomer.id ? { ...c, notes: updatedNotes, points: newPoints } : c));
+      setSelectedCustomer(prev => prev ? { ...prev, notes: updatedNotes, points: newPoints } : null);
     } catch (err) {
       console.error(err);
     }
@@ -338,8 +366,7 @@ export default function ClientesPage() {
       cpf: cleanDoc,
       vehicle_plate: vehiclePlate ? vehiclePlate.toUpperCase().trim() : null,
       vehicle_model: vehicleModel || null,
-      notes: finalNotes || null,
-      points: Number(points || 0)
+      notes: finalNotes || null
     };
 
     try {
@@ -353,7 +380,8 @@ export default function ClientesPage() {
           ...c, 
           ...payload,
           is_company: clientType === 'PJ',
-          contact_person: contactPerson
+          contact_person: contactPerson,
+          points: points
         } : c));
         setIsOpen(false);
       } else {
@@ -370,6 +398,7 @@ export default function ClientesPage() {
             ...payload,
             is_company: clientType === 'PJ',
             contact_person: contactPerson,
+            points: points,
             created_at: new Date().toISOString()
           };
           setCustomers(prev => [localNew, ...prev]);
@@ -377,7 +406,8 @@ export default function ClientesPage() {
           setCustomers(prev => [{
             ...newCust,
             is_company: clientType === 'PJ',
-            contact_person: contactPerson
+            contact_person: contactPerson,
+            points: points
           }, ...prev]);
         }
         setIsOpen(false);
