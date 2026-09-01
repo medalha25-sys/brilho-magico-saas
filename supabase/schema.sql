@@ -64,13 +64,25 @@ CREATE TABLE IF NOT EXISTS appointments (
   created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
 );
 
--- 5. Criação de Índices para otimizar as buscas no banco
+-- 5. Tabela de Feedbacks & Avaliações dos Clientes
+CREATE TABLE IF NOT EXISTS feedbacks (
+  id UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
+  tenant_id UUID REFERENCES tenants(id) ON DELETE CASCADE,
+  customer_name TEXT,
+  customer_phone TEXT,
+  comment TEXT NOT NULL,
+  rating INTEGER NOT NULL CHECK (rating >= 1 AND rating <= 5),
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
+);
+
+-- 6. Criação de Índices para otimizar as buscas no banco
 CREATE INDEX IF NOT EXISTS idx_services_tenant ON services(tenant_id);
 CREATE INDEX IF NOT EXISTS idx_customers_tenant ON customers(tenant_id);
 CREATE INDEX IF NOT EXISTS idx_appointments_tenant ON appointments(tenant_id);
 CREATE INDEX IF NOT EXISTS idx_appointments_date ON appointments(scheduled_at);
+CREATE INDEX IF NOT EXISTS idx_feedbacks_tenant ON feedbacks(tenant_id);
 
--- 6. Função Triggers para Auto-criar Profile ao Registrar no Supabase Auth
+-- 7. Função Triggers para Auto-criar Profile ao Registrar no Supabase Auth
 CREATE OR REPLACE FUNCTION public.handle_new_user() 
 RETURNS TRIGGER AS $$
 BEGIN

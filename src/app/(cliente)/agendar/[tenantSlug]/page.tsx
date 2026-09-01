@@ -18,7 +18,10 @@ import {
   Sparkles,
   Info,
   X,
-  Search
+  Search,
+  Star,
+  Lock,
+  CheckCircle2
 } from 'lucide-react';
 import { createClient } from '@/utils/supabase/client';
 
@@ -63,6 +66,17 @@ export default function BookingPage({ params }: { params: Promise<{ tenantSlug: 
 
   // Modal de Regras de Fidelidade
   const [isRulesOpen, setIsRulesOpen] = useState(false);
+
+  // Modal de Feedback & Avaliação (5 Estrelas - Mínimo 50 caracteres)
+  const [isFeedbackOpen, setIsFeedbackOpen] = useState(false);
+  const [feedbackName, setFeedbackName] = useState('');
+  const [feedbackPhone, setFeedbackPhone] = useState('');
+  const [feedbackComment, setFeedbackComment] = useState('');
+  const [feedbackRating, setFeedbackRating] = useState<number>(0);
+  const [feedbackHoverRating, setFeedbackHoverRating] = useState<number>(0);
+  const [feedbackSubmitted, setFeedbackSubmitted] = useState(false);
+  const [feedbackLoading, setFeedbackLoading] = useState(false);
+  const [starWarning, setStarWarning] = useState(false);
 
   // Estados dinâmicos do Supabase
   const [services, setServices] = useState<Service[]>([]);
@@ -269,6 +283,60 @@ export default function BookingPage({ params }: { params: Promise<{ tenantSlug: 
       console.error(e);
     } finally {
       setQueryLoading(false);
+    }
+  };
+
+  // Seleção de Estrela com Regra Estrita de 50 Caracteres Mínimos
+  const handleStarClick = (starNum: number) => {
+    if (feedbackComment.trim().length < 50) {
+      setStarWarning(true);
+      setTimeout(() => setStarWarning(false), 3500);
+      return;
+    }
+    setFeedbackRating(starNum);
+    setStarWarning(false);
+  };
+
+  // Envio do Feedback do Atendimento
+  const handleSubmitFeedback = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (feedbackComment.trim().length < 50) {
+      setStarWarning(true);
+      return;
+    }
+    if (feedbackRating === 0) {
+      alert("Por favor, selecione quantas estrelas (de 1 a 5) você dá para a Brilho Mágico.");
+      return;
+    }
+
+    setFeedbackLoading(true);
+
+    try {
+      const { data: tenantData } = await supabase
+        .from('tenants')
+        .select('id')
+        .eq('slug', tenantSlug)
+        .single();
+
+      const payload = {
+        tenant_id: tenantData?.id || null,
+        customer_name: feedbackName.trim() || customerName || 'Cliente Brilho Mágico',
+        customer_phone: feedbackPhone.trim() || customerPhone || null,
+        comment: feedbackComment.trim(),
+        rating: feedbackRating
+      };
+
+      try {
+        await supabase.from('feedbacks').insert(payload);
+      } catch (err) {
+        console.warn("Aviso ao salvar avaliação no Supabase:", err);
+      }
+
+      setFeedbackSubmitted(true);
+    } catch (err) {
+      console.error("Erro ao enviar avaliação:", err);
+    } finally {
+      setFeedbackLoading(false);
     }
   };
 
@@ -500,8 +568,8 @@ export default function BookingPage({ params }: { params: Promise<{ tenantSlug: 
         {/* Passo 1: Seleção de Veículo e Serviço */}
         {step === 1 && (
           <div>
-            {/* Barra Superior com Consultar Pontos e Compartilhar */}
-            <div className="flex items-center justify-between mb-4">
+            {/* Barra Superior com Consultar Pontos, Avaliar e Compartilhar */}
+            <div className="flex items-center justify-between mb-4 gap-2">
               <button
                 type="button"
                 onClick={() => {
@@ -518,12 +586,26 @@ export default function BookingPage({ params }: { params: Promise<{ tenantSlug: 
 
               <button
                 type="button"
+                onClick={() => {
+                  setIsFeedbackOpen(true);
+                  setFeedbackSubmitted(false);
+                  setStarWarning(false);
+                }}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 text-xs font-bold text-amber-400 transition-colors"
+                title="Avaliar Atendimento"
+              >
+                <Star size={13} className="fill-amber-400 text-amber-400" />
+                <span>Avaliar</span>
+              </button>
+
+              <button
+                type="button"
                 onClick={handleNativeShare}
                 className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-neutral-850 hover:bg-neutral-800 border border-neutral-750 text-xs font-semibold text-neutral-300 hover:text-white transition-colors"
                 title="Compartilhar aplicativo com amigos"
               >
                 <Share2 size={12} className="text-green-500" />
-                <span>Indicar Amigos</span>
+                <span>Indicar</span>
               </button>
             </div>
 
@@ -1083,6 +1165,24 @@ export default function BookingPage({ params }: { params: Promise<{ tenantSlug: 
               </div>
             </div>
 
+            {/* Avaliação & Feedback no Passo 3 */}
+            <div className="mt-8 border-t border-neutral-800 pt-6 w-full text-left">
+              <button
+                type="button"
+                onClick={() => {
+                  setIsFeedbackOpen(true);
+                  setFeedbackName(customerName);
+                  setFeedbackPhone(customerPhone);
+                  setFeedbackSubmitted(false);
+                  setStarWarning(false);
+                }}
+                className="w-full py-3.5 px-4 rounded-2xl bg-gradient-to-r from-amber-500/15 via-amber-500/10 to-yellow-500/15 hover:from-amber-500/25 hover:to-yellow-500/25 border border-amber-500/40 text-xs font-bold text-amber-400 flex items-center justify-center gap-2 transition-all shadow-md"
+              >
+                <Star size={16} className="fill-amber-400 text-amber-400" />
+                <span>⭐ Avaliar nosso atendimento e deixar feedback</span>
+              </button>
+            </div>
+
             <button 
               onClick={() => {
                 setStep(1);
@@ -1102,6 +1202,222 @@ export default function BookingPage({ params }: { params: Promise<{ tenantSlug: 
         )}
 
       </div>
+
+      {/* Botão Flutuante Discreto: Avaliar Atendimento */}
+      <button
+        type="button"
+        onClick={() => {
+          setIsFeedbackOpen(true);
+          setFeedbackSubmitted(false);
+          setStarWarning(false);
+        }}
+        className="fixed bottom-5 right-5 z-40 px-3.5 py-2.5 rounded-full bg-gradient-to-r from-amber-500 to-yellow-500 hover:from-amber-400 hover:to-yellow-400 text-gray-950 font-bold text-xs shadow-xl shadow-amber-500/25 flex items-center gap-2 transition-all hover:scale-105 active:scale-95 border border-amber-300"
+        title="Avaliar Atendimento"
+      >
+        <Star size={15} className="fill-gray-950 text-gray-950" />
+        <span>Avaliar Atendimento</span>
+      </button>
+
+      {/* Modal de Feedback & Avaliação com 5 Estrelas (Mínimo 50 Caracteres) */}
+      {isFeedbackOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-xs">
+          <div className="w-full max-w-md bg-neutral-900 border border-neutral-800 rounded-3xl p-6 shadow-2xl text-left animate-in fade-in zoom-in-95 duration-150 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2 rounded-xl bg-amber-500/10 text-amber-400">
+                  <Star size={20} className="fill-amber-400" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-white text-base">Avaliar Atendimento</h3>
+                  <p className="text-[11px] text-neutral-400">Conte sua experiência na Brilho Mágico</p>
+                </div>
+              </div>
+              <button 
+                onClick={() => setIsFeedbackOpen(false)}
+                className="p-1 rounded-lg text-neutral-400 hover:text-white"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            {feedbackSubmitted ? (
+              <div className="text-center py-6 space-y-4">
+                <div className="w-16 h-16 rounded-full bg-amber-500/10 border border-amber-500/30 text-amber-400 flex items-center justify-center mx-auto text-2xl animate-bounce">
+                  ⭐
+                </div>
+                <div>
+                  <h4 className="text-base font-bold text-white">Muito Obrigado pelo seu Feedback! 🎉</h4>
+                  <p className="text-xs text-neutral-300 mt-1.5 leading-relaxed">
+                    Sua avaliação de <strong>{feedbackRating} estrelas</strong> foi registrada com sucesso e nos ajuda a melhorar cada dia mais o atendimento na <strong>Brilho Mágico</strong>!
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setIsFeedbackOpen(false)}
+                  className="w-full py-2.5 bg-green-600 hover:bg-green-500 text-neutral-950 font-bold rounded-xl text-xs transition-colors"
+                >
+                  Fechar
+                </button>
+              </div>
+            ) : (
+              <form onSubmit={handleSubmitFeedback} className="space-y-4">
+                {/* Nome e Telefone (opcionais) */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-[11px] font-semibold text-neutral-400 uppercase tracking-wider mb-1">
+                      Seu Nome (Opcional)
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="Ex: Carlos Ferreira"
+                      value={feedbackName}
+                      onChange={(e) => setFeedbackName(e.target.value)}
+                      className="w-full px-3 py-2 rounded-xl bg-neutral-950 border border-neutral-800 text-white text-xs placeholder-neutral-500 focus:outline-none focus:border-green-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-semibold text-neutral-400 uppercase tracking-wider mb-1">
+                      WhatsApp (Opcional)
+                    </label>
+                    <input
+                      type="tel"
+                      placeholder="Ex: 38999999999"
+                      value={feedbackPhone}
+                      onChange={(e) => setFeedbackPhone(e.target.value)}
+                      className="w-full px-3 py-2 rounded-xl bg-neutral-950 border border-neutral-800 text-white text-xs placeholder-neutral-500 focus:outline-none focus:border-green-500"
+                    />
+                  </div>
+                </div>
+
+                {/* Comentário Obrigatório (mínimo 50 caracteres) */}
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="block text-[11px] font-semibold text-neutral-400 uppercase tracking-wider">
+                      O que achou do serviço e atendimento? *
+                    </label>
+                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                      feedbackComment.trim().length >= 50
+                        ? 'bg-emerald-950/60 text-emerald-400 border border-emerald-800'
+                        : 'bg-amber-950/60 text-amber-400 border border-amber-800'
+                    }`}>
+                      {feedbackComment.trim().length} / 50 mín.
+                    </span>
+                  </div>
+
+                  <textarea
+                    rows={3}
+                    required
+                    placeholder="Escreva em detalhes o que achou do atendimento, rapidez, qualidade da lavagem e estrutura da Brilho Mágico (mínimo 50 caracteres)..."
+                    value={feedbackComment}
+                    onChange={(e) => {
+                      setFeedbackComment(e.target.value);
+                      if (e.target.value.trim().length >= 50) {
+                        setStarWarning(false);
+                      }
+                    }}
+                    className="w-full px-3 py-2.5 rounded-xl bg-neutral-950 border border-neutral-800 text-white text-xs placeholder-neutral-500 focus:outline-none focus:border-amber-500 transition-colors"
+                  ></textarea>
+
+                  {/* Alerta de progresso de caracteres */}
+                  {feedbackComment.trim().length < 50 ? (
+                    <p className="text-[10px] text-amber-400/90 mt-1 flex items-center gap-1">
+                      <span>✍️ Faltam <strong>{50 - feedbackComment.trim().length}</strong> caracteres para liberar a avaliação com as 5 estrelas.</span>
+                    </p>
+                  ) : (
+                    <p className="text-[10px] text-emerald-400 font-semibold mt-1 flex items-center gap-1">
+                      <span>✅ Mínimo de 50 caracteres atingido! Agora clique nas estrelas abaixo:</span>
+                    </p>
+                  )}
+                </div>
+
+                {/* Alerta caso tente clicar nas estrelas antes de 50 chars */}
+                {starWarning && feedbackComment.trim().length < 50 && (
+                  <div className="p-2.5 rounded-xl bg-amber-950/40 border border-amber-500/40 text-[11px] text-amber-300 animate-bounce">
+                    ⚠️ <strong>Atenção:</strong> Por regra, você precisa escrever no mínimo 50 caracteres no campo acima antes de poder marcar as estrelas!
+                  </div>
+                )}
+
+                {/* Seção das 5 Estrelas */}
+                <div className="p-4 rounded-2xl bg-neutral-950 border border-neutral-800 text-center">
+                  <span className="text-[11px] font-bold text-neutral-300 block mb-2.5">
+                    Quantas estrelas você dá para a Brilho Mágico?
+                  </span>
+
+                  <div className="flex items-center justify-center gap-2">
+                    {[1, 2, 3, 4, 5].map((star) => {
+                      const isUnlocked = feedbackComment.trim().length >= 50;
+                      const isFilled = (feedbackHoverRating || feedbackRating) >= star;
+
+                      return (
+                        <button
+                          key={star}
+                          type="button"
+                          disabled={!isUnlocked}
+                          onMouseEnter={() => isUnlocked && setFeedbackHoverRating(star)}
+                          onMouseLeave={() => isUnlocked && setFeedbackHoverRating(0)}
+                          onClick={() => handleStarClick(star)}
+                          className={`p-1.5 rounded-xl transition-all ${
+                            isUnlocked
+                              ? 'cursor-pointer hover:scale-125 active:scale-95'
+                              : 'cursor-not-allowed opacity-40'
+                          }`}
+                          title={isUnlocked ? `${star} estrelas` : 'Escreva 50 caracteres para desbloquear'}
+                        >
+                          <Star 
+                            size={28} 
+                            className={`transition-colors ${
+                              isFilled && isUnlocked
+                                ? 'fill-amber-400 text-amber-400 filter drop-shadow-[0_0_8px_rgba(251,191,36,0.5)]'
+                                : isFilled
+                                ? 'fill-neutral-600 text-neutral-600'
+                                : 'text-neutral-700'
+                            }`}
+                          />
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  {/* Legenda da nota selecionada */}
+                  {feedbackComment.trim().length >= 50 ? (
+                    <div className="mt-2.5 text-xs font-bold text-amber-400">
+                      {feedbackRating === 1 && "😞 1 Estrela - Precisa melhorar"}
+                      {feedbackRating === 2 && "😐 2 Estrelas - Regular"}
+                      {feedbackRating === 3 && "🙂 3 Estrelas - Bom"}
+                      {feedbackRating === 4 && "😀 4 Estrelas - Muito Bom"}
+                      {feedbackRating === 5 && "🌟 5 Estrelas - Excelente / Impecável!"}
+                      {feedbackRating === 0 && "Clique nas estrelas para selecionar sua nota"}
+                    </div>
+                  ) : (
+                    <div className="mt-2 text-[10px] text-neutral-500 flex items-center justify-center gap-1">
+                      <Lock size={11} />
+                      <span>Estrelas bloqueadas até atingir 50 caracteres</span>
+                    </div>
+                  )}
+                </div>
+
+                {/* Botões de Ação */}
+                <div className="flex items-center justify-end gap-3 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => setIsFeedbackOpen(false)}
+                    className="px-4 py-2.5 rounded-xl border border-neutral-800 text-xs font-semibold text-neutral-300 hover:bg-neutral-800"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={feedbackLoading || feedbackComment.trim().length < 50 || feedbackRating === 0}
+                    className="px-5 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 disabled:opacity-40 disabled:cursor-not-allowed text-neutral-950 text-xs font-bold flex items-center justify-center gap-1.5 shadow-lg shadow-amber-500/20 transition-all"
+                  >
+                    {feedbackLoading ? 'Enviando...' : 'Enviar Avaliação'}
+                  </button>
+                </div>
+              </form>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Modal de Consulta de Pontos do Cliente */}
       {isCheckPointsOpen && (
@@ -1270,3 +1586,4 @@ export default function BookingPage({ params }: { params: Promise<{ tenantSlug: 
     </div>
   );
 }
+
