@@ -84,85 +84,89 @@ export default function ClientesPage() {
         const tId = profile.tenant_id;
         setTenantId(tId);
 
-        // 1. Busca todos os agendamentos finalizados do tenant para calcular os pontos reais
-        const { data: finalizedApps } = await supabase
+        // 1. Busca todos os agendamentos do tenant (para obter todos os clientes que já agendaram)
+        const { data: allAppointments } = await supabase
           .from('appointments')
-          .select('customer_phone')
+          .select('id, customer_name, customer_phone, customer_cpf, vehicle_plate, status, created_at')
           .eq('tenant_id', tId)
-          .eq('status', 'FINALIZADO');
+          .order('created_at', { ascending: false });
 
+        // Mapeia pontuação de lavagens finalizadas por telefone
         const finalizedCountByPhone = new Map<string, number>();
-        if (finalizedApps) {
-          finalizedApps.forEach(app => {
+        (allAppointments || []).forEach(app => {
+          if (app.status === 'FINALIZADO') {
             const clean = (app.customer_phone || '').replace(/\D/g, '');
             if (clean) {
               finalizedCountByPhone.set(clean, (finalizedCountByPhone.get(clean) || 0) + 1);
             }
-          });
-        }
+          }
+        });
 
         // 2. Busca da tabela oficial de customers
-        const { data: customData, error: customErr } = await supabase
+        const { data: customData } = await supabase
           .from('customers')
           .select('*')
           .eq('tenant_id', tId)
           .order('name', { ascending: true });
 
-        if (!customErr && customData && customData.length > 0) {
-          const listWithPoints = customData.map(c => {
-            const cleanP = (c.phone || '').replace(/\D/g, '');
-            const finalAppsCount = finalizedCountByPhone.get(cleanP) || 0;
-            
-            // Se points for 0/null/undefined mas o cliente já possui lavagens finalizadas no histórico
-            let realPts = Number(c.points || 0);
-            if (realPts === 0 && finalAppsCount > 0) {
-              realPts = finalAppsCount;
-              // Atualiza o banco em segundo plano para persistir
-              supabase.from('customers').update({ points: realPts }).eq('id', c.id).then();
-            }
+        const customerMap = new Map<string, Customer>();
 
-            return {
-              ...c,
-              points: realPts
+        // Adiciona os clientes cadastrados formalmente na tabela customers
+        (customData || []).forEach(c => {
+          const clean = (c.phone || '').replace(/\D/g, '') || c.name;
+          const finalAppsCount = finalizedCountByPhone.get(clean) || 0;
+          let realPts = Number(c.points || 0);
+          if (realPts === 0 && finalAppsCount > 0) {
+            realPts = finalAppsCount;
+            supabase.from('customers').update({ points: realPts }).eq('id', c.id).then();
+          }
+          customerMap.set(clean, {
+            ...c,
+            points: realPts
+          });
+        });
+
+        // Mescla clientes que vieram dos agendamentos e ainda não constam na tabela customers
+        (allAppointments || []).forEach(app => {
+          const clean = (app.customer_phone || '').replace(/\D/g, '') || app.customer_name;
+          if (!customerMap.has(clean)) {
+            const finalAppsCount = finalizedCountByPhone.get(clean) || 0;
+            const newEntry: Customer = {
+              id: app.id,
+              name: app.customer_name,
+              phone: app.customer_phone,
+              cpf: app.customer_cpf || null,
+              vehicle_plate: app.vehicle_plate || null,
+              vehicle_model: null,
+              notes: null,
+              points: finalAppsCount,
+              created_at: app.created_at
             };
-          });
+            customerMap.set(clean, newEntry);
 
-          setCustomers(listWithPoints);
-          setLoading(false);
-          return;
-        }
-
-        // 3. Se a tabela customers estiver vazia, agrega clientes dos agendamentos com os pontos calculados
-        const { data: appData } = await supabase
-          .from('appointments')
-          .select('id, customer_name, customer_phone, customer_cpf, vehicle_plate, created_at')
-          .eq('tenant_id', tId)
-          .order('created_at', { ascending: false });
-
-        if (appData && appData.length > 0) {
-          const map = new Map<string, Customer>();
-          appData.forEach(app => {
-            const clean = (app.customer_phone || '').replace(/\D/g, '');
-            const key = clean || app.customer_name;
-            if (!map.has(key)) {
-              const finalAppsCount = finalizedCountByPhone.get(clean) || 0;
-              map.set(key, {
-                id: app.id,
-                name: app.customer_name,
-                phone: app.customer_phone,
-                cpf: app.customer_cpf || null,
-                vehicle_plate: app.vehicle_plate || null,
-                vehicle_model: null,
-                notes: null,
-                points: finalAppsCount,
-                created_at: app.created_at
-              });
+            // Auto-insere na tabela customers para persistir no banco
+            supabase.from('customers').insert({
+              tenant_id: tId,
+              name: app.customer_name,
+              phone: app.customer_phone,
+              cpf: app.customer_cpf || null,
+              vehicle_plate: app.vehicle_plate || null,
+              points: finalAppsCount
+            }).then();
+          } else {
+            // Se o cliente já está no mapa mas não tem placa ou CPF preenchidos na tabela customers, completa com os dados do agendamento
+            const existing = customerMap.get(clean)!;
+            if (!existing.vehicle_plate && app.vehicle_plate) {
+              existing.vehicle_plate = app.vehicle_plate;
             }
-          });
-          setCustomers(Array.from(map.values()));
-        } else {
-          setCustomers([]);
-        }
+            if (!existing.cpf && app.customer_cpf) {
+              existing.cpf = app.customer_cpf;
+            }
+          }
+        });
+
+        const mergedList = Array.from(customerMap.values()).sort((a, b) => a.name.localeCompare(b.name));
+        setCustomers(mergedList);
       }
     } catch (err) {
       console.error("Erro ao carregar clientes:", err);
