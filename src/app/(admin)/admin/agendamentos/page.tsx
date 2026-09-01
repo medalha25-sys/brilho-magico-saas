@@ -6,6 +6,7 @@ import { Calendar, Phone, Tag, Trash2, Clock, CheckCircle2, XCircle, Search, Pri
 
 interface Appointment {
   id: string;
+  tenant_id?: string;
   customer_name: string;
   customer_phone: string;
   customer_cpf?: string | null;
@@ -34,6 +35,7 @@ export default function AgendamentosPage() {
   const [filter, setFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('TODOS');
   const [tenantInfo, setTenantInfo] = useState<TenantInfo | null>(null);
+  const [tenantId, setTenantId] = useState<string | null>(null);
   const [printApp, setPrintApp] = useState<Appointment | null>(null);
 
   // Carrega os agendamentos e dados da empresa do Supabase
@@ -61,6 +63,7 @@ export default function AgendamentosPage() {
           .single();
 
         if (profile?.tenant_id) {
+          setTenantId(profile.tenant_id);
           const { data: tenant } = await supabase
             .from('tenants')
             .select('name, phone, address, cnpj')
@@ -101,19 +104,44 @@ export default function AgendamentosPage() {
         // Se o agendamento foi finalizado, credita automaticamente +1 ponto de fidelidade para o cliente
         if (newStatus === 'FINALIZADO' && targetApp) {
           try {
-            const cleanPhone = targetApp.customer_phone.trim();
-            const { data: customer } = await supabase
-              .from('customers')
-              .select('id, points')
-              .eq('phone', cleanPhone)
-              .maybeSingle();
+            const rawPhone = targetApp.customer_phone.trim();
+            const cleanDigits = rawPhone.replace(/\D/g, '');
+            const activeTenantId = targetApp.tenant_id || tenantId;
 
-            if (customer) {
-              const currentPts = Number(customer.points || 0);
-              await supabase
+            if (activeTenantId) {
+              // 1. Tenta buscar cliente pelo tenant_id
+              const { data: customerList } = await supabase
                 .from('customers')
-                .update({ points: currentPts + 1 })
-                .eq('id', customer.id);
+                .select('id, name, phone, points')
+                .eq('tenant_id', activeTenantId);
+
+              const matchedCustomer = (customerList || []).find(c => {
+                const cDigits = (c.phone || '').replace(/\D/g, '');
+                return (
+                  c.phone === rawPhone ||
+                  cDigits === cleanDigits ||
+                  (cleanDigits.length >= 10 && cDigits.endsWith(cleanDigits.slice(-10)))
+                );
+              });
+
+              if (matchedCustomer) {
+                const currentPts = Number(matchedCustomer.points || 0);
+                await supabase
+                  .from('customers')
+                  .update({ points: currentPts + 1 })
+                  .eq('id', matchedCustomer.id);
+              } else {
+                // Se o cliente não constava ainda na tabela customers, cadastra já com 1 ponto
+                await supabase
+                  .from('customers')
+                  .insert({
+                    tenant_id: activeTenantId,
+                    name: targetApp.customer_name,
+                    phone: rawPhone,
+                    vehicle_plate: targetApp.vehicle_plate || null,
+                    points: 1
+                  });
+              }
             }
           } catch (pErr) {
             console.warn("Aviso ao pontuar cliente de fidelidade:", pErr);

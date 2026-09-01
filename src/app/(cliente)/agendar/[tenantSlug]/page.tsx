@@ -231,17 +231,37 @@ export default function BookingPage({ params }: { params: Promise<{ tenantSlug: 
         .single();
 
       if (tenantData?.id) {
-        const { data: customer } = await supabase
+        // 1. Busca cadastro do cliente
+        const { data: customerList } = await supabase
           .from('customers')
-          .select('name, points')
-          .eq('tenant_id', tenantData.id)
-          .eq('phone', queryPhone.trim())
-          .maybeSingle();
+          .select('name, phone, points')
+          .eq('tenant_id', tenantData.id);
 
-        if (customer) {
+        const customer = (customerList || []).find(c => {
+          const cClean = (c.phone || '').replace(/\D/g, '');
+          return cClean === clean || (clean.length >= 10 && cClean.endsWith(clean.slice(-10)));
+        });
+
+        // 2. Busca também os agendamentos finalizados deste telefone
+        const { data: finalizedApps } = await supabase
+          .from('appointments')
+          .select('customer_name, customer_phone')
+          .eq('tenant_id', tenantData.id)
+          .eq('status', 'FINALIZADO');
+
+        const finalMatches = (finalizedApps || []).filter(a => {
+          const aClean = (a.customer_phone || '').replace(/\D/g, '');
+          return aClean === clean || (clean.length >= 10 && aClean.endsWith(clean.slice(-10)));
+        });
+
+        if (customer || finalMatches.length > 0) {
+          const storedPts = Number(customer?.points || 0);
+          const computedPts = storedPts > 0 ? storedPts : finalMatches.length;
+          const resolvedName = customer?.name || finalMatches[0]?.customer_name || 'Cliente';
+
           setQueryResult({
-            name: customer.name,
-            points: Number(customer.points || 0)
+            name: resolvedName,
+            points: computedPts
           });
         }
       }
@@ -279,12 +299,27 @@ export default function BookingPage({ params }: { params: Promise<{ tenantSlug: 
           .single();
 
         if (tenantData?.id) {
-          const { data: existingCust } = await supabase
+          const { data: customerList } = await supabase
             .from('customers')
-            .select('name, vehicle_plate, cpf, points')
+            .select('name, phone, vehicle_plate, cpf, points')
+            .eq('tenant_id', tenantData.id);
+
+          const existingCust = (customerList || []).find(c => {
+            const cClean = (c.phone || '').replace(/\D/g, '');
+            return cClean === cleanPhone || cClean.endsWith(cleanPhone.slice(-10));
+          });
+
+          // Busca agendamentos finalizados para garantir o saldo de pontos
+          const { data: finalizedApps } = await supabase
+            .from('appointments')
+            .select('customer_name, customer_phone, vehicle_plate, customer_cpf')
             .eq('tenant_id', tenantData.id)
-            .eq('phone', customerPhone.trim())
-            .maybeSingle();
+            .eq('status', 'FINALIZADO');
+
+          const finalMatches = (finalizedApps || []).filter(a => {
+            const aClean = (a.customer_phone || '').replace(/\D/g, '');
+            return aClean === cleanPhone || aClean.endsWith(cleanPhone.slice(-10));
+          });
 
           if (existingCust) {
             if (!customerName && existingCust.name) setCustomerName(existingCust.name);
@@ -293,9 +328,12 @@ export default function BookingPage({ params }: { params: Promise<{ tenantSlug: 
               setCustomerCpf(existingCust.cpf);
               setWantCpf(true);
             }
-            if (existingCust.points !== undefined) {
-              setCustomerPoints(Number(existingCust.points || 0));
-            }
+            const stored = Number(existingCust.points || 0);
+            setCustomerPoints(stored > 0 ? stored : finalMatches.length);
+          } else if (finalMatches.length > 0) {
+            if (!customerName && finalMatches[0].customer_name) setCustomerName(finalMatches[0].customer_name);
+            if (!vehiclePlate && finalMatches[0].vehicle_plate) setVehiclePlate(finalMatches[0].vehicle_plate);
+            setCustomerPoints(finalMatches.length);
           }
         }
       } catch (e) {

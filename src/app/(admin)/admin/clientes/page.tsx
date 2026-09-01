@@ -84,7 +84,24 @@ export default function ClientesPage() {
         const tId = profile.tenant_id;
         setTenantId(tId);
 
-        // 1. Tenta buscar da tabela oficial de customers
+        // 1. Busca todos os agendamentos finalizados do tenant para calcular os pontos reais
+        const { data: finalizedApps } = await supabase
+          .from('appointments')
+          .select('customer_phone')
+          .eq('tenant_id', tId)
+          .eq('status', 'FINALIZADO');
+
+        const finalizedCountByPhone = new Map<string, number>();
+        if (finalizedApps) {
+          finalizedApps.forEach(app => {
+            const clean = (app.customer_phone || '').replace(/\D/g, '');
+            if (clean) {
+              finalizedCountByPhone.set(clean, (finalizedCountByPhone.get(clean) || 0) + 1);
+            }
+          });
+        }
+
+        // 2. Busca da tabela oficial de customers
         const { data: customData, error: customErr } = await supabase
           .from('customers')
           .select('*')
@@ -92,12 +109,30 @@ export default function ClientesPage() {
           .order('name', { ascending: true });
 
         if (!customErr && customData && customData.length > 0) {
-          setCustomers(customData.map(c => ({ ...c, points: c.points || 0 })));
+          const listWithPoints = customData.map(c => {
+            const cleanP = (c.phone || '').replace(/\D/g, '');
+            const finalAppsCount = finalizedCountByPhone.get(cleanP) || 0;
+            
+            // Se points for 0/null/undefined mas o cliente já possui lavagens finalizadas no histórico
+            let realPts = Number(c.points || 0);
+            if (realPts === 0 && finalAppsCount > 0) {
+              realPts = finalAppsCount;
+              // Atualiza o banco em segundo plano para persistir
+              supabase.from('customers').update({ points: realPts }).eq('id', c.id).then();
+            }
+
+            return {
+              ...c,
+              points: realPts
+            };
+          });
+
+          setCustomers(listWithPoints);
           setLoading(false);
           return;
         }
 
-        // 2. Se a tabela customers estiver vazia ou não criada, agrega clientes únicos dos agendamentos
+        // 3. Se a tabela customers estiver vazia, agrega clientes dos agendamentos com os pontos calculados
         const { data: appData } = await supabase
           .from('appointments')
           .select('id, customer_name, customer_phone, customer_cpf, vehicle_plate, created_at')
@@ -107,8 +142,10 @@ export default function ClientesPage() {
         if (appData && appData.length > 0) {
           const map = new Map<string, Customer>();
           appData.forEach(app => {
-            const key = app.customer_phone.replace(/\D/g, '') || app.customer_name;
+            const clean = (app.customer_phone || '').replace(/\D/g, '');
+            const key = clean || app.customer_name;
             if (!map.has(key)) {
+              const finalAppsCount = finalizedCountByPhone.get(clean) || 0;
               map.set(key, {
                 id: app.id,
                 name: app.customer_name,
@@ -117,7 +154,7 @@ export default function ClientesPage() {
                 vehicle_plate: app.vehicle_plate || null,
                 vehicle_model: null,
                 notes: null,
-                points: 0,
+                points: finalAppsCount,
                 created_at: app.created_at
               });
             }
