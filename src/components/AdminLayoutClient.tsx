@@ -15,6 +15,7 @@ import {
   X
 } from 'lucide-react';
 import { ThemeToggle } from '@/components/ThemeToggle';
+import { AdminNotificationBell } from '@/components/AdminNotificationBell';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 
@@ -161,9 +162,10 @@ export default function AdminLayoutClient({
             </button>
           </div>
 
-          <div className="flex items-center space-x-4 ml-auto">
+          <div className="flex items-center space-x-3.5 ml-auto">
+            <AdminNotificationBell />
             <ThemeToggle />
-            <div className="h-8 w-8 rounded-full bg-blue-600 flex items-center justify-center text-white font-bold text-sm">
+            <div className="h-8 w-8 rounded-full bg-blue-600 flex items-center justify-center text-white font-bold text-sm shadow-sm">
               {initial}
             </div>
             <div className="hidden sm:flex flex-col text-left">
