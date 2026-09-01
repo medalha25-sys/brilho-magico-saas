@@ -39,6 +39,8 @@ interface Appointment {
   scheduled_at: string;
   total_price: number;
   status: 'PENDENTE' | 'CONFIRMADO' | 'FINALIZADO' | 'CANCELADO';
+  notes?: string | null;
+  payment_method?: string | null;
   services?: {
     name: string;
     price: number;
@@ -589,9 +591,20 @@ export default function AgendamentosPage() {
                       {formatDateTime(app.scheduled_at)}
                     </td>
 
-                    {/* Preço */}
-                    <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-gray-900 dark:text-white">
-                      R$ {Number(app.total_price).toFixed(2)}
+                    {/* Preço e Forma de Pagamento */}
+                    <td className="px-6 py-4 whitespace-nowrap text-left">
+                      <div className="text-sm font-bold text-gray-900 dark:text-white">
+                        R$ {Number(app.total_price).toFixed(2)}
+                      </div>
+                      {app.notes && (app.notes.includes('[PAGAMENTO:') || app.notes.includes('PIX') || app.notes.includes('Dinheiro') || app.notes.includes('Cartão')) ? (
+                        <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 mt-1">
+                          {app.notes.includes('Dinheiro') ? '💵 Dinheiro' : app.notes.includes('Crédito') ? '💳 Crédito' : app.notes.includes('Débito') ? '💳 Débito' : '🟢 PIX'}
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1 text-[10px] font-medium px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 mt-1">
+                          🟢 PIX
+                        </span>
+                      )}
                     </td>
 
                     {/* Status */}

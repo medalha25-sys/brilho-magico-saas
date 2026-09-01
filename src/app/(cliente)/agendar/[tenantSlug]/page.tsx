@@ -21,7 +21,11 @@ import {
   Search,
   Star,
   Lock,
-  CheckCircle2
+  QrCode,
+  Copy,
+  Banknote,
+  CreditCard,
+  DollarSign
 } from 'lucide-react';
 import { createClient } from '@/utils/supabase/client';
 
@@ -34,6 +38,65 @@ interface Service {
 }
 
 const TIME_SLOTS_MOCK = ['08:00', '09:30', '11:00', '13:30', '15:00', '16:30'];
+
+// Gerador oficial de código Pix Copia e Cola (Padrão Banco Central BR Code EMV com CRC16)
+function getCRC16(payload: string): string {
+  let crc = 0xFFFF;
+  for (let i = 0; i < payload.length; i++) {
+    crc ^= payload.charCodeAt(i) << 8;
+    for (let j = 0; j < 8; j++) {
+      if ((crc & 0x8000) !== 0) {
+        crc = ((crc << 1) ^ 0x1021) & 0xFFFF;
+      } else {
+        crc = (crc << 1) & 0xFFFF;
+      }
+    }
+  }
+  return crc.toString(16).toUpperCase().padStart(4, '0');
+}
+
+function generatePixPayload({
+  key = '10751043605',
+  name = 'Claudio Pereira Junior',
+  city = 'Salinas',
+  amount = 0,
+  txid = 'BRILHO'
+}: {
+  key?: string;
+  name?: string;
+  city?: string;
+  amount?: number;
+  txid?: string;
+}): string {
+  const cleanKey = key.replace(/\D/g, '') || key;
+  const cleanName = name.normalize('NFD').replace(/[\u0300-\u036f]/g, '').slice(0, 25);
+  const cleanCity = city.normalize('NFD').replace(/[\u0300-\u036f]/g, '').slice(0, 15);
+  const formattedAmount = amount > 0 ? amount.toFixed(2) : '';
+
+  const formatField = (id: string, value: string) => {
+    const len = value.length.toString().padStart(2, '0');
+    return `${id}${len}${value}`;
+  };
+
+  const merchantAccount = 
+    formatField('00', 'br.gov.bcb.pix') +
+    formatField('01', cleanKey);
+
+  const payload = 
+    formatField('00', '01') +
+    formatField('26', merchantAccount) +
+    formatField('52', '0000') +
+    formatField('53', '986') +
+    (formattedAmount ? formatField('54', formattedAmount) : '') +
+    formatField('58', 'BR') +
+    formatField('59', cleanName) +
+    formatField('60', cleanCity) +
+    formatField('62', formatField('05', txid.slice(0, 25) || '***')) +
+    '6304';
+
+  const crc = getCRC16(payload);
+  return `${payload}${crc}`;
+}
 
 export default function BookingPage({ params }: { params: Promise<{ tenantSlug: string }> }) {
   const resolvedParams = use(params);
@@ -53,6 +116,15 @@ export default function BookingPage({ params }: { params: Promise<{ tenantSlug: 
   const [vehiclePlate, setVehiclePlate] = useState('');
   const [customerCpf, setCustomerCpf] = useState('');
   const [wantCpf, setWantCpf] = useState(false);
+  
+  // Formas de Pagamento Obrigatórias: 1º PIX, 2º Dinheiro, 3º Cartão (Crédito / Débito)
+  const [paymentMethod, setPaymentMethod] = useState<'PIX' | 'DINHEIRO' | 'CARTAO'>('PIX');
+  const [cardType, setCardType] = useState<'CREDITO' | 'DEBITO'>('CREDITO');
+  const [needChange, setNeedChange] = useState(false);
+  const [changeFor, setChangeFor] = useState('');
+  const [pixCopied, setPixCopied] = useState(false);
+  const [pixKeyCopied, setPixKeyCopied] = useState(false);
+
   const [loading, setLoading] = useState(false);
   const [copied, setCopied] = useState(false);
   const [customerPoints, setCustomerPoints] = useState<number>(0);
@@ -440,11 +512,50 @@ export default function BookingPage({ params }: { params: Promise<{ tenantSlug: 
     }
   };
 
+  // Helper para gerar o Copia e Cola dinâmico do Pix
+  const getPixCode = () => {
+    return generatePixPayload({
+      key: '10751043605',
+      name: 'Claudio Pereira Junior',
+      city: 'Salinas',
+      amount: selectedService?.price || 0,
+      txid: 'BRILHO'
+    });
+  };
+
+  const handleCopyPixKey = (key: string) => {
+    if (typeof navigator !== 'undefined' && navigator.clipboard) {
+      navigator.clipboard.writeText(key);
+      setPixKeyCopied(true);
+      setTimeout(() => setPixKeyCopied(false), 3000);
+    }
+  };
+
+  const handleCopyPixPayload = (payload: string) => {
+    if (typeof navigator !== 'undefined' && navigator.clipboard) {
+      navigator.clipboard.writeText(payload);
+      setPixCopied(true);
+      setTimeout(() => setPixCopied(false), 3000);
+    }
+  };
+
+  const getPaymentMethodLabel = () => {
+    if (paymentMethod === 'PIX') return '🟢 PIX (Chave: 10751043605 - Cláudio Pereira Junior)';
+    if (paymentMethod === 'DINHEIRO') return `💵 Dinheiro no Balcão${needChange && changeFor ? ` (Troco para ${changeFor})` : ''}`;
+    if (paymentMethod === 'CARTAO') return `💳 Cartão de ${cardType === 'CREDITO' ? 'Crédito' : 'Débito'} (Na Maquininha)`;
+    return 'PIX';
+  };
+
   // 2. Envia o agendamento e cadastra automaticamente o cliente no Supabase
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedDate || !selectedTime || !customerName || !customerPhone || !vehiclePlate || !selectedService) {
       alert("Por favor, preencha todos os campos obrigatórios (Nome, WhatsApp e Placa do Veículo).");
+      return;
+    }
+
+    if (!paymentMethod) {
+      alert("Por favor, selecione uma forma de pagamento para continuar.");
       return;
     }
 
@@ -506,7 +617,8 @@ export default function BookingPage({ params }: { params: Promise<{ tenantSlug: 
       const [hour, minute] = selectedTime.split(':').map(Number);
       const scheduledAt = new Date(year, month - 1, day, hour, minute).toISOString();
 
-      // 3. Salva na tabela appointments
+      // 3. Salva na tabela appointments com forma de pagamento
+      const paymentInfo = getPaymentMethodLabel();
       const { error: insertError } = await supabase
         .from('appointments')
         .insert({
@@ -550,6 +662,7 @@ export default function BookingPage({ params }: { params: Promise<{ tenantSlug: 
                 service_name: selectedService?.name || 'Lavagem',
                 scheduled_at: scheduledAt,
                 total_price: selectedService?.price || 0,
+                payment_method: paymentInfo,
                 created_at: new Date().toISOString()
               }
             });
@@ -577,7 +690,8 @@ export default function BookingPage({ params }: { params: Promise<{ tenantSlug: 
 - *Veículo:* ${vehicleType === 'CARRO' ? '🚗 Carro' : '🏍️ Moto'} (${vehiclePlate.toUpperCase()})
 - *Serviço:* ${selectedService?.name}
 - *Data/Hora:* ${formattedDate} às ${selectedTime}
-- *Valor:* R$ ${selectedService?.price.toFixed(2)}${wantCpf ? `\n- *CPF na Nota:* ${customerCpf}` : ''}`;
+- *Valor:* R$ ${selectedService?.price.toFixed(2)}
+- *Forma de Pagamento:* ${getPaymentMethodLabel()}${wantCpf ? `\n- *CPF na Nota:* ${customerCpf}` : ''}`;
 
     return `https://wa.me/${num}?text=${encodeURIComponent(text)}`;
   };
@@ -987,11 +1101,236 @@ export default function BookingPage({ params }: { params: Promise<{ tenantSlug: 
                   </div>
                 )}
               </div>
+
+              {/* 4. Método de Pagamento Obrigatório */}
+              <div className="pt-4 border-t border-neutral-800/80">
+                <div className="flex items-center justify-between mb-3">
+                  <label className="block text-xs font-bold text-neutral-300 uppercase tracking-wider flex items-center gap-1.5">
+                    <DollarSign size={14} className="text-emerald-400" />
+                    <span>Forma de Pagamento *</span>
+                  </label>
+                  <span className="text-[10px] text-emerald-400 font-bold bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded-full">
+                    Obrigatório
+                  </span>
+                </div>
+
+                {/* 3 Opções em Ordem Exata: 1º PIX, 2º Dinheiro, 3º Cartão */}
+                <div className="grid grid-cols-3 gap-2 mb-3">
+                  {/* 1º PIX */}
+                  <button
+                    type="button"
+                    onClick={() => setPaymentMethod('PIX')}
+                    className={`p-3 rounded-2xl border text-center transition-all flex flex-col items-center justify-center gap-1 ${
+                      paymentMethod === 'PIX'
+                        ? 'bg-emerald-950/70 border-emerald-500 text-white shadow-lg shadow-emerald-500/20 ring-1 ring-emerald-500 scale-[1.02]'
+                        : 'bg-neutral-950 border-neutral-800 text-neutral-400 hover:border-neutral-700 hover:text-white'
+                    }`}
+                  >
+                    <div className={`p-1.5 rounded-xl ${paymentMethod === 'PIX' ? 'bg-emerald-500 text-neutral-950' : 'bg-neutral-900 text-emerald-400'}`}>
+                      <QrCode size={18} />
+                    </div>
+                    <span className="text-xs font-black">PIX</span>
+                    <span className="text-[9px] text-emerald-400 font-semibold">QR Code / Copia</span>
+                  </button>
+
+                  {/* 2º Dinheiro */}
+                  <button
+                    type="button"
+                    onClick={() => setPaymentMethod('DINHEIRO')}
+                    className={`p-3 rounded-2xl border text-center transition-all flex flex-col items-center justify-center gap-1 ${
+                      paymentMethod === 'DINHEIRO'
+                        ? 'bg-amber-950/70 border-amber-500 text-white shadow-lg shadow-amber-500/20 ring-1 ring-amber-500 scale-[1.02]'
+                        : 'bg-neutral-950 border-neutral-800 text-neutral-400 hover:border-neutral-700 hover:text-white'
+                    }`}
+                  >
+                    <div className={`p-1.5 rounded-xl ${paymentMethod === 'DINHEIRO' ? 'bg-amber-500 text-neutral-950' : 'bg-neutral-900 text-amber-400'}`}>
+                      <Banknote size={18} />
+                    </div>
+                    <span className="text-xs font-black">Dinheiro</span>
+                    <span className="text-[9px] text-amber-400 font-semibold">No balcão</span>
+                  </button>
+
+                  {/* 3º Cartão */}
+                  <button
+                    type="button"
+                    onClick={() => setPaymentMethod('CARTAO')}
+                    className={`p-3 rounded-2xl border text-center transition-all flex flex-col items-center justify-center gap-1 ${
+                      paymentMethod === 'CARTAO'
+                        ? 'bg-blue-950/70 border-blue-500 text-white shadow-lg shadow-blue-500/20 ring-1 ring-blue-500 scale-[1.02]'
+                        : 'bg-neutral-950 border-neutral-800 text-neutral-400 hover:border-neutral-700 hover:text-white'
+                    }`}
+                  >
+                    <div className={`p-1.5 rounded-xl ${paymentMethod === 'CARTAO' ? 'bg-blue-500 text-neutral-950' : 'bg-neutral-900 text-blue-400'}`}>
+                      <CreditCard size={18} />
+                    </div>
+                    <span className="text-xs font-black">Cartão</span>
+                    <span className="text-[9px] text-blue-400 font-semibold">Crédito / Débito</span>
+                  </button>
+                </div>
+
+                {/* DETALHES DE ACORDO COM A FORMA SELECIONADA */}
+                {/* Se PIX selecionado */}
+                {paymentMethod === 'PIX' && (
+                  <div className="p-4 rounded-2xl bg-neutral-950 border border-emerald-500/40 space-y-3 animate-in fade-in duration-200">
+                    <div className="flex items-center justify-between pb-2 border-b border-neutral-850">
+                      <div>
+                        <span className="text-[10px] text-emerald-400 font-bold uppercase tracking-wider block">Titular do Pix:</span>
+                        <p className="text-xs font-bold text-white">Cláudio Pereira Junior</p>
+                      </div>
+                      <div className="text-right">
+                        <span className="text-[10px] text-neutral-400 font-bold uppercase tracking-wider block">Valor do Serviço:</span>
+                        <p className="text-sm font-black text-emerald-400">R$ {selectedService?.price.toFixed(2)}</p>
+                      </div>
+                    </div>
+
+                    {/* QR Code Pix */}
+                    <div className="flex flex-col items-center justify-center p-3.5 bg-white rounded-2xl shadow-inner my-2">
+                      <img
+                        src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(getPixCode())}&margin=8`}
+                        alt="QR Code Pix"
+                        className="w-40 h-40 rounded-xl"
+                      />
+                      <p className="text-[10px] text-neutral-900 font-bold mt-1.5 flex items-center gap-1">
+                        📱 Abra o aplicativo do seu banco e aponte a câmera
+                      </p>
+                    </div>
+
+                    {/* Botões Copiar Pix */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      {/* Copiar Chave */}
+                      <button
+                        type="button"
+                        onClick={() => handleCopyPixKey('10751043605')}
+                        className="py-2.5 px-3 rounded-xl bg-neutral-900 hover:bg-neutral-850 border border-neutral-800 text-xs font-semibold text-white flex items-center justify-center gap-1.5 transition-colors"
+                      >
+                        {pixKeyCopied ? <Check size={14} className="text-emerald-400" /> : <Copy size={14} className="text-neutral-400" />}
+                        <span>{pixKeyCopied ? 'Chave Copiada!' : 'Copiar Chave CPF'}</span>
+                      </button>
+
+                      {/* Copiar Pix Copia e Cola */}
+                      <button
+                        type="button"
+                        onClick={() => handleCopyPixPayload(getPixCode())}
+                        className="py-2.5 px-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-neutral-950 text-xs font-bold flex items-center justify-center gap-1.5 transition-colors shadow-md shadow-emerald-500/20"
+                      >
+                        {pixCopied ? <Check size={14} /> : <QrCode size={14} />}
+                        <span>{pixCopied ? 'Código Copiado!' : 'Pix Copia e Cola'}</span>
+                      </button>
+                    </div>
+
+                    <p className="text-[10px] text-neutral-500 text-center leading-relaxed">
+                      Chave CPF: <strong className="text-neutral-300">10751043605</strong> • Pague agora ou na entrega do veículo.
+                    </p>
+                  </div>
+                )}
+
+                {/* Se DINHEIRO selecionado */}
+                {paymentMethod === 'DINHEIRO' && (
+                  <div className="p-4 rounded-2xl bg-neutral-950 border border-amber-500/40 space-y-3 animate-in fade-in duration-200">
+                    <div className="flex items-center gap-2.5">
+                      <div className="p-2 rounded-xl bg-amber-500/10 text-amber-400">
+                        <Banknote size={20} />
+                      </div>
+                      <div>
+                        <p className="text-xs font-bold text-white">Pagamento em Espécie no Balcão</p>
+                        <p className="text-[11px] text-neutral-400">Pague presencialmente ao entregar o veículo</p>
+                      </div>
+                    </div>
+
+                    <div className="pt-2 border-t border-neutral-850">
+                      <label className="text-[11px] font-semibold text-neutral-300 block mb-1.5">
+                        Vai precisar de troco?
+                      </label>
+                      <div className="grid grid-cols-2 gap-2 mb-2">
+                        <button
+                          type="button"
+                          onClick={() => setNeedChange(false)}
+                          className={`py-2 px-3 rounded-xl text-xs font-semibold border transition-all ${
+                            !needChange 
+                              ? 'bg-amber-500 text-neutral-950 border-amber-500 font-bold' 
+                              : 'bg-neutral-900 border-neutral-800 text-neutral-400 hover:text-white'
+                          }`}
+                        >
+                          Não preciso de troco
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setNeedChange(true)}
+                          className={`py-2 px-3 rounded-xl text-xs font-semibold border transition-all ${
+                            needChange 
+                              ? 'bg-amber-500 text-neutral-950 border-amber-500 font-bold' 
+                              : 'bg-neutral-900 border-neutral-800 text-neutral-400 hover:text-white'
+                          }`}
+                        >
+                          Sim, preciso de troco
+                        </button>
+                      </div>
+
+                      {needChange && (
+                        <div className="mt-2 animate-in fade-in duration-150">
+                          <input
+                            type="text"
+                            placeholder="Troco para quanto? (Ex: R$ 100,00)"
+                            value={changeFor}
+                            onChange={(e) => setChangeFor(e.target.value)}
+                            className="w-full px-3 py-2 rounded-xl bg-neutral-900 border border-neutral-800 text-white text-xs placeholder-neutral-500 focus:outline-none focus:border-amber-500"
+                          />
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* Se CARTÃO selecionado (Sub-opções Crédito ou Débito) */}
+                {paymentMethod === 'CARTAO' && (
+                  <div className="p-4 rounded-2xl bg-neutral-950 border border-blue-500/40 space-y-3 animate-in fade-in duration-200">
+                    <div className="flex items-center gap-2.5">
+                      <div className="p-2 rounded-xl bg-blue-500/10 text-blue-400">
+                        <CreditCard size={20} />
+                      </div>
+                      <div>
+                        <p className="text-xs font-bold text-white">Pagamento na Maquininha</p>
+                        <p className="text-[11px] text-neutral-400">Selecione se prefere pagar no Crédito ou Débito:</p>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2 pt-1">
+                      <button
+                        type="button"
+                        onClick={() => setCardType('CREDITO')}
+                        className={`py-2.5 px-3 rounded-xl text-xs font-bold border transition-all flex items-center justify-center gap-1.5 ${
+                          cardType === 'CREDITO'
+                            ? 'bg-blue-600 border-blue-500 text-white shadow-md shadow-blue-500/20'
+                            : 'bg-neutral-900 border-neutral-800 text-neutral-400 hover:text-white'
+                        }`}
+                      >
+                        <span>💳 Cartão de Crédito</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setCardType('DEBITO')}
+                        className={`py-2.5 px-3 rounded-xl text-xs font-bold border transition-all flex items-center justify-center gap-1.5 ${
+                          cardType === 'DEBITO'
+                            ? 'bg-blue-600 border-blue-500 text-white shadow-md shadow-blue-500/20'
+                            : 'bg-neutral-900 border-neutral-800 text-neutral-400 hover:text-white'
+                        }`}
+                      >
+                        <span>💳 Cartão de Débito</span>
+                      </button>
+                    </div>
+
+                    <p className="text-[10px] text-neutral-500 text-center">
+                      Aceitamos as principais bandeiras (Visa, Mastercard, Elo, Hipercard).
+                    </p>
+                  </div>
+                )}
+              </div>
             </div>
 
             <button
               type="submit"
-              disabled={loading || !selectedTime || !selectedDate}
+              disabled={loading || !selectedTime || !selectedDate || !paymentMethod}
               className="w-full bg-green-600 hover:bg-green-500 disabled:opacity-50 text-neutral-950 font-bold py-4 rounded-2xl transition-colors duration-200 flex justify-center items-center gap-2 shadow-lg shadow-green-500/10"
             >
               {loading ? 'Confirmando...' : 'Confirmar Agendamento'}
@@ -1012,6 +1351,79 @@ export default function BookingPage({ params }: { params: Promise<{ tenantSlug: 
             <p className="text-neutral-400 text-sm mt-4 px-2 leading-relaxed">
               Tudo pronto! Seu agendamento foi registrado com sucesso na nossa fila.
             </p>
+
+            {/* CARD DE FORMA DE PAGAMENTO SELECIONADA */}
+            <div className="mt-6 p-5 rounded-2xl bg-neutral-950 border border-neutral-800 text-left w-full shadow-lg">
+              <div className="flex items-center justify-between pb-3 border-b border-neutral-850">
+                <div className="flex items-center gap-2">
+                  <div className={`p-2 rounded-xl ${
+                    paymentMethod === 'PIX' 
+                      ? 'bg-emerald-500/10 text-emerald-400' 
+                      : paymentMethod === 'DINHEIRO' 
+                      ? 'bg-amber-500/10 text-amber-400' 
+                      : 'bg-blue-500/10 text-blue-400'
+                  }`}>
+                    {paymentMethod === 'PIX' && <QrCode size={18} />}
+                    {paymentMethod === 'DINHEIRO' && <Banknote size={18} />}
+                    {paymentMethod === 'CARTAO' && <CreditCard size={18} />}
+                  </div>
+                  <div>
+                    <h3 className="text-xs font-bold text-white uppercase tracking-wider">
+                      Forma de Pagamento
+                    </h3>
+                    <p className="text-[11px] text-neutral-400">
+                      {paymentMethod === 'PIX' && 'Pagamento via PIX Instantâneo'}
+                      {paymentMethod === 'DINHEIRO' && `Dinheiro no Balcão${needChange && changeFor ? ` (Troco para ${changeFor})` : ''}`}
+                      {paymentMethod === 'CARTAO' && `Cartão de ${cardType === 'CREDITO' ? 'Crédito' : 'Débito'} na Maquininha`}
+                    </p>
+                  </div>
+                </div>
+
+                <span className="text-sm font-black text-emerald-400">
+                  R$ {selectedService?.price.toFixed(2)}
+                </span>
+              </div>
+
+              {/* Se PIX, exibe QR Code e botões de cópia na tela final */}
+              {paymentMethod === 'PIX' && (
+                <div className="mt-3.5 space-y-3">
+                  <div className="flex flex-col items-center justify-center p-3 bg-white rounded-xl">
+                    <img
+                      src={`https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(getPixCode())}&margin=6`}
+                      alt="QR Code Pix"
+                      className="w-36 h-36 rounded-lg"
+                    />
+                    <p className="text-[10px] text-neutral-800 font-bold mt-1">
+                      📱 Escaneie com o app do seu banco
+                    </p>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => handleCopyPixKey('10751043605')}
+                      className="py-2.5 px-3 rounded-xl bg-neutral-900 hover:bg-neutral-850 border border-neutral-800 text-xs font-semibold text-white flex items-center justify-center gap-1.5 transition-colors"
+                    >
+                      {pixKeyCopied ? <Check size={14} className="text-emerald-400" /> : <Copy size={14} className="text-neutral-400" />}
+                      <span>{pixKeyCopied ? 'Chave Copiada!' : 'Copiar Chave CPF'}</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => handleCopyPixPayload(getPixCode())}
+                      className="py-2.5 px-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-neutral-950 text-xs font-bold flex items-center justify-center gap-1.5 transition-colors shadow-md shadow-emerald-500/20"
+                    >
+                      {pixCopied ? <Check size={14} /> : <QrCode size={14} />}
+                      <span>{pixCopied ? 'Código Copiado!' : 'Pix Copia e Cola'}</span>
+                    </button>
+                  </div>
+
+                  <p className="text-[10px] text-neutral-400 text-center">
+                    Favorecido: <strong className="text-white">Cláudio Pereira Junior</strong> • Chave: <strong className="text-white">10751043605</strong>
+                  </p>
+                </div>
+              )}
+            </div>
 
             {/* CARTÃO DE FIDELIDADE DIGITAL */}
             <div className="mt-6 p-5 rounded-2xl bg-gradient-to-br from-amber-950/40 via-neutral-900 to-neutral-950 border border-amber-500/30 text-left w-full shadow-xl relative overflow-hidden">
