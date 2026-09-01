@@ -1,0 +1,49 @@
+{
+  "name": "Brilho Mágico - Studio Automotivo",
+  "short_name": "Brilho Mágico",
+  "description": "Agendamento online e gestão inteligente para Lava-Rápido e Studio Automotivo.",
+  "start_url": "/",
+  "id": "/",
+  "display": "standalone",
+  "background_color": "#0a0a0a",
+  "theme_color": "#22c55e",
+  "orientation": "portrait",
+  "scope": "/",
+  "icons": [
+    {
+      "src": "/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/logo.jpg",
+      "sizes": "192x192 512x512",
+      "type": "image/jpeg",
+      "purpose": "any maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Agendar Lavagem",
+      "short_name": "Agendar",
+      "description": "Agende a lavagem do seu veículo em poucos toques",
+      "url": "/agendar/brilho-magico",
+      "icons": [{ "src": "/icon-192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "Painel de Gestão",
+      "short_name": "Painel",
+      "description": "Área administrativa do lava-rápido",
+      "url": "/admin/dashboard",
+      "icons": [{ "src": "/icon-192.png", "sizes": "192x192" }]
+    }
+  ],
+  "categories": ["business", "utilities", "lifestyle"]
+}
