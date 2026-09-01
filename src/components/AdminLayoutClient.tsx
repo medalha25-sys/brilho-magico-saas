@@ -7,6 +7,7 @@ import {
   Settings, 
   Car, 
   Users,
+  DollarSign,
   Menu,
   MessageSquare,
   ChevronLeft,
@@ -38,6 +39,7 @@ export default function AdminLayoutClient({
     { label: 'Dashboard', href: '/admin/dashboard', icon: LayoutDashboard },
     { label: 'Agendamentos', href: '/admin/agendamentos', icon: Calendar },
     { label: 'Clientes', href: '/admin/clientes', icon: Users },
+    { label: 'Financeiro', href: '/admin/financeiro', icon: DollarSign },
     { label: 'Serviços', href: '/admin/servicos', icon: Car },
     { label: 'Configurações', href: '/admin/configuracoes', icon: Settings },
   ];
