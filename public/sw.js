@@ -1,10 +1,17 @@
-const CACHE_NAME = 'brilho-magico-pwa-v1';
+const CACHE_NAME = 'brilho-magico-pwa-v2';
 
 const STATIC_ASSETS = [
   '/',
+  '/agendar/brilho-magico',
   '/manifest.json',
   '/logo.jpg',
+  '/icon-72.png',
+  '/icon-96.png',
+  '/icon-128.png',
+  '/icon-144.png',
+  '/icon-152.png',
   '/icon-192.png',
+  '/icon-384.png',
   '/icon-512.png',
   '/apple-touch-icon.png'
 ];
@@ -35,9 +42,8 @@ self.addEventListener('activate', (event) => {
   self.clients.claim();
 });
 
-// Interceptação de requisições com estratégia Network-First
+// Interceptação de requisições com estratégia Network-First e fallback de cache
 self.addEventListener('fetch', (event) => {
-  // Ignora requisições que não sejam GET ou esquemas como chrome-extension / supabase auth
   if (event.request.method !== 'GET' || !event.request.url.startsWith('http')) {
     return;
   }
@@ -45,7 +51,6 @@ self.addEventListener('fetch', (event) => {
   event.respondWith(
     fetch(event.request)
       .then((response) => {
-        // Se a resposta for válida, armazena uma cópia no cache
         if (response && response.status === 200 && response.type === 'basic') {
           const responseClone = response.clone();
           caches.open(CACHE_NAME).then((cache) => {
@@ -55,13 +60,13 @@ self.addEventListener('fetch', (event) => {
         return response;
       })
       .catch(async () => {
-        // Se a rede falhar, tenta recuperar do cache local
         const cachedResponse = await caches.match(event.request);
         if (cachedResponse) {
           return cachedResponse;
         }
-        // Retorna a página principal se for navegação offline
         if (event.request.mode === 'navigate') {
+          const fallbackPage = await caches.match('/agendar/brilho-magico');
+          if (fallbackPage) return fallbackPage;
           return caches.match('/');
         }
       })
