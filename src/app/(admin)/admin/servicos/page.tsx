@@ -53,14 +53,13 @@ export default function ServicosPage() {
   };
 
   // Carrega os serviços do banco
-  const loadServices = async (tId: string) => {
+  const loadServices = async () => {
     try {
       setLoading(true);
       const { data, error } = await supabase
         .from('services')
         .select('*')
-        .eq('tenant_id', tId)
-        .order('created_at', { ascending: true });
+        .order('price', { ascending: true });
 
       if (error) {
         console.error("Erro ao carregar serviços:", error.message);
@@ -83,12 +82,8 @@ export default function ServicosPage() {
 
   useEffect(() => {
     async function init() {
-      const tId = await getTenantId();
-      if (tId) {
-        await loadServices(tId);
-      } else {
-        setLoading(false);
-      }
+      await getTenantId();
+      await loadServices();
     }
     init();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -121,17 +116,19 @@ export default function ServicosPage() {
   // Salva no Supabase (cria ou atualiza)
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!name || !price || !duration || !tenantId) {
+    if (!name || !price || !duration) {
       setModalError("Por favor, preencha todos os campos obrigatórios.");
       return;
     }
+
+    const activeTenantId = tenantId || 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11';
 
     setSubmitting(true);
     setModalError(null);
 
     const serviceData = {
-      tenant_id: tenantId,
-      name,
+      tenant_id: activeTenantId,
+      name: name.trim(),
       vehicle_type: vehicleType,
       price: parseFloat(price),
       duration_minutes: parseInt(duration),

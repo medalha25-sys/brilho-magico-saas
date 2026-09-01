@@ -191,12 +191,12 @@ export default function BookingPage({ params }: { params: Promise<{ tenantSlug: 
           address: tenantData.address || 'Avenida Florips Crispim, N 644 - Bairro Novo Panorama, Salinas MG'
         });
 
-        // Busca os serviços ativos desse lava-rápido
+        // Busca todos os serviços ativos diretamente do Supabase
         const { data: servicesData } = await supabase
           .from('services')
           .select('*')
-          .eq('tenant_id', tenantData.id)
-          .eq('is_active', true);
+          .eq('is_active', true)
+          .order('price', { ascending: true });
 
         if (servicesData && servicesData.length > 0) {
           setServices(servicesData.map(s => ({
@@ -206,14 +206,6 @@ export default function BookingPage({ params }: { params: Promise<{ tenantSlug: 
             duration: s.duration_minutes,
             vehicleType: s.vehicle_type as 'CARRO' | 'MOTO'
           })));
-        } else {
-          setServices([
-            { id: '1', name: 'Ducha Simples', price: 40.00, duration: 40, vehicleType: 'CARRO' },
-            { id: '2', name: 'Lavagem Completa', price: 80.00, duration: 60, vehicleType: 'CARRO' },
-            { id: '3', name: 'Higienização Interna', price: 150.00, duration: 120, vehicleType: 'CARRO' },
-            { id: '4', name: 'Ducha Simples', price: 30.00, duration: 30, vehicleType: 'MOTO' },
-            { id: '5', name: 'Lavagem Completa', price: 50.00, duration: 50, vehicleType: 'MOTO' },
-          ]);
         }
 
         // Busca agendamentos dos próximos 7 dias para mapear horários bloqueados
