@@ -1143,39 +1143,6 @@ export default function BookingPage({ params }: { params: Promise<{ tenantSlug: 
               </div>
             </div>
 
-            {/* Como chegar / Localização Google Maps */}
-            <div className="mt-8 border-t border-neutral-800 pt-6 w-full text-left">
-              <h3 className="text-xs font-bold text-neutral-400 uppercase tracking-widest mb-3 flex items-center gap-1.5">
-                📍 Como chegar até nós
-              </h3>
-              <p className="text-[11px] text-neutral-400 mb-4 leading-relaxed">
-                Avenida Florips Crispim, N 644 - Bairro Novo Panorama, Salinas - MG
-              </p>
-              
-              {/* Iframe embutido estilizado em Modo Escuro */}
-              <div className="w-full h-40 rounded-xl overflow-hidden border border-neutral-800 bg-neutral-950 mb-3 shadow-inner">
-                <iframe
-                  title="Brilho Mágico Localização"
-                  width="100%"
-                  height="100%"
-                  frameBorder="0"
-                  style={{ border: 0, filter: 'invert(90%) hue-rotate(180deg)' }}
-                  src="https://maps.google.com/maps?q=Avenida%20Florips%20Crispim,%20644%20Novo%20Panorama,%20Salinas%20MG&t=&z=15&ie=UTF8&iwloc=&output=embed"
-                  allowFullScreen
-                ></iframe>
-              </div>
-
-              {/* Botão de rota direta por aplicativo */}
-              <a
-                href="https://www.google.com/maps/dir/?api=1&destination=Avenida+Florips+Crispim,+644+-+Novo+Panorama,+Salinas+-+MG"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="w-full flex items-center justify-center py-3 bg-neutral-850 hover:bg-neutral-800 border border-neutral-800 rounded-xl text-[11px] font-semibold text-white tracking-wide transition-colors duration-200 gap-1.5"
-              >
-                🗺️ Abrir Rota no Google Maps (GPS)
-              </a>
-            </div>
-
             {/* Links de WhatsApp dos administradores */}
             <div className="mt-8 border-t border-neutral-800 pt-6 w-full text-left">
               <h3 className="text-xs font-bold text-neutral-400 uppercase tracking-widest mb-3 flex items-center gap-1.5">
@@ -1217,6 +1184,39 @@ export default function BookingPage({ params }: { params: Promise<{ tenantSlug: 
                   </div>
                 </a>
               </div>
+            </div>
+
+            {/* Como chegar / Localização Google Maps */}
+            <div className="mt-8 border-t border-neutral-800 pt-6 w-full text-left">
+              <h3 className="text-xs font-bold text-neutral-400 uppercase tracking-widest mb-3 flex items-center gap-1.5">
+                📍 Como chegar até nós
+              </h3>
+              <p className="text-[11px] text-neutral-400 mb-4 leading-relaxed">
+                Avenida Florips Crispim, N 644 - Bairro Novo Panorama, Salinas - MG
+              </p>
+              
+              {/* Iframe embutido estilizado em Modo Escuro */}
+              <div className="w-full h-40 rounded-xl overflow-hidden border border-neutral-800 bg-neutral-950 mb-3 shadow-inner">
+                <iframe
+                  title="Brilho Mágico Localização"
+                  width="100%"
+                  height="100%"
+                  frameBorder="0"
+                  style={{ border: 0, filter: 'invert(90%) hue-rotate(180deg)' }}
+                  src="https://maps.google.com/maps?q=Avenida%20Florips%20Crispim,%20644%20Novo%20Panorama,%20Salinas%20MG&t=&z=15&ie=UTF8&iwloc=&output=embed"
+                  allowFullScreen
+                ></iframe>
+              </div>
+
+              {/* Botão de rota direta por aplicativo */}
+              <a
+                href="https://www.google.com/maps/dir/?api=1&destination=Avenida+Florips+Crispim,+644+-+Novo+Panorama,+Salinas+-+MG"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="w-full flex items-center justify-center py-3 bg-neutral-850 hover:bg-neutral-800 border border-neutral-800 rounded-xl text-[11px] font-semibold text-white tracking-wide transition-colors duration-200 gap-1.5"
+              >
+                🗺️ Abrir Rota no Google Maps (GPS)
+              </a>
             </div>
 
             {/* Avaliação & Feedback no Passo 3 */}
