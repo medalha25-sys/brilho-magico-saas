@@ -13,7 +13,12 @@ import {
   MessageSquare, 
   ArrowLeft, 
   FileText,
-  Share2
+  Share2,
+  Award,
+  Sparkles,
+  Info,
+  X,
+  Search
 } from 'lucide-react';
 import { createClient } from '@/utils/supabase/client';
 
@@ -47,10 +52,21 @@ export default function BookingPage({ params }: { params: Promise<{ tenantSlug: 
   const [wantCpf, setWantCpf] = useState(false);
   const [loading, setLoading] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [customerPoints, setCustomerPoints] = useState<number>(0);
+
+  // Modal de Consulta de Pontos
+  const [isCheckPointsOpen, setIsCheckPointsOpen] = useState(false);
+  const [queryPhone, setQueryPhone] = useState('');
+  const [queryResult, setQueryResult] = useState<{ name: string; points: number } | null>(null);
+  const [queryLoading, setQueryLoading] = useState(false);
+  const [querySearched, setQuerySearched] = useState(false);
+
+  // Modal de Regras de Fidelidade
+  const [isRulesOpen, setIsRulesOpen] = useState(false);
 
   // Estados dinâmicos do Supabase
   const [services, setServices] = useState<Service[]>([]);
-  const [bookedSlots, setBookedSlots] = useState<{ [key: string]: string[] }>({}); // key: 'yyyy-mm-dd', value: ['08:00', '09:30']
+  const [bookedSlots, setBookedSlots] = useState<{ [key: string]: string[] }>({});
   const [loadingData, setLoadingData] = useState(true);
   const [tenantInfo, setTenantInfo] = useState<{ name: string; logo_url: string; address: string } | null>(null);
 
@@ -59,7 +75,6 @@ export default function BookingPage({ params }: { params: Promise<{ tenantSlug: 
     async function loadData() {
       try {
         setLoadingData(true);
-        // Busca o lava-rápido pelo slug (ex: wash-express)
         const { data: tenantData } = await supabase
           .from('tenants')
           .select('id, name, logo_url, address')
@@ -106,7 +121,6 @@ export default function BookingPage({ params }: { params: Promise<{ tenantSlug: 
             vehicleType: s.vehicle_type as 'CARRO' | 'MOTO'
           })));
         } else {
-          // Fallback se não cadastrou serviços ainda
           setServices([
             { id: '1', name: 'Ducha Simples', price: 40.00, duration: 40, vehicleType: 'CARRO' },
             { id: '2', name: 'Lavagem Completa', price: 80.00, duration: 60, vehicleType: 'CARRO' },
@@ -133,7 +147,6 @@ export default function BookingPage({ params }: { params: Promise<{ tenantSlug: 
           const booked: { [key: string]: string[] } = {};
           appointmentsData.forEach((app) => {
             const dateObj = new Date(app.scheduled_at);
-            // Corrige para o timezone local do Brasil
             const yyyy = dateObj.getFullYear();
             const mm = String(dateObj.getMonth() + 1).padStart(2, '0');
             const dd = String(dateObj.getDate()).padStart(2, '0');
@@ -170,7 +183,7 @@ export default function BookingPage({ params }: { params: Promise<{ tenantSlug: 
 
   const getShareText = () => {
     const name = tenantInfo?.name || 'Brilho Mágico';
-    return `🚗 Olá! Agende a lavagem do seu carro ou moto na ${name} 100% online, sem filas e com rapidez:\n👉 ${getShareUrl()}`;
+    return `🚗 Olá! Agende a lavagem do seu carro ou moto na ${name} 100% online, sem filas e ganhe pontos no Cartão Fidelidade:\n👉 ${getShareUrl()}`;
   };
 
   const handleNativeShare = async () => {
@@ -197,6 +210,45 @@ export default function BookingPage({ params }: { params: Promise<{ tenantSlug: 
       navigator.clipboard.writeText(url);
       setCopied(true);
       setTimeout(() => setCopied(false), 2500);
+    }
+  };
+
+  // Consulta manual de pontos do cliente por WhatsApp
+  const handleSearchPoints = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const clean = queryPhone.replace(/\D/g, '');
+    if (clean.length < 8) return;
+
+    setQueryLoading(true);
+    setQuerySearched(true);
+    setQueryResult(null);
+
+    try {
+      const { data: tenantData } = await supabase
+        .from('tenants')
+        .select('id')
+        .eq('slug', tenantSlug)
+        .single();
+
+      if (tenantData?.id) {
+        const { data: customer } = await supabase
+          .from('customers')
+          .select('name, points')
+          .eq('tenant_id', tenantData.id)
+          .eq('phone', queryPhone.trim())
+          .maybeSingle();
+
+        if (customer) {
+          setQueryResult({
+            name: customer.name,
+            points: Number(customer.points || 0)
+          });
+        }
+      }
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setQueryLoading(false);
     }
   };
 
@@ -229,7 +281,7 @@ export default function BookingPage({ params }: { params: Promise<{ tenantSlug: 
         if (tenantData?.id) {
           const { data: existingCust } = await supabase
             .from('customers')
-            .select('name, vehicle_plate, cpf')
+            .select('name, vehicle_plate, cpf, points')
             .eq('tenant_id', tenantData.id)
             .eq('phone', customerPhone.trim())
             .maybeSingle();
@@ -240,6 +292,9 @@ export default function BookingPage({ params }: { params: Promise<{ tenantSlug: 
             if (!customerCpf && existingCust.cpf) {
               setCustomerCpf(existingCust.cpf);
               setWantCpf(true);
+            }
+            if (existingCust.points !== undefined) {
+              setCustomerPoints(Number(existingCust.points || 0));
             }
           }
         }
@@ -260,7 +315,6 @@ export default function BookingPage({ params }: { params: Promise<{ tenantSlug: 
     setLoading(true);
 
     try {
-      // Pega o ID do Tenant
       const { data: tenantData } = await supabase
         .from('tenants')
         .select('id')
@@ -282,12 +336,13 @@ export default function BookingPage({ params }: { params: Promise<{ tenantSlug: 
       try {
         const { data: existingCust } = await supabase
           .from('customers')
-          .select('id')
+          .select('id, points')
           .eq('tenant_id', tenantData.id)
           .eq('phone', cleanPhone)
           .maybeSingle();
 
         if (existingCust?.id) {
+          setCustomerPoints(Number(existingCust.points || 0));
           await supabase
             .from('customers')
             .update({
@@ -297,6 +352,7 @@ export default function BookingPage({ params }: { params: Promise<{ tenantSlug: 
             })
             .eq('id', existingCust.id);
         } else {
+          setCustomerPoints(0);
           await supabase
             .from('customers')
             .insert({
@@ -304,7 +360,8 @@ export default function BookingPage({ params }: { params: Promise<{ tenantSlug: 
               name: customerName,
               phone: cleanPhone,
               vehicle_plate: cleanPlate,
-              cpf: cleanCpf
+              cpf: cleanCpf,
+              points: 0
             });
         }
       } catch (custErr) {
@@ -337,7 +394,6 @@ export default function BookingPage({ params }: { params: Promise<{ tenantSlug: 
         return;
       }
 
-      // Atualiza os horários ocupados localmente sem recarregar a página toda
       const updatedBooked = { ...bookedSlots };
       if (!updatedBooked[selectedDate]) {
         updatedBooked[selectedDate] = [];
@@ -406,19 +462,30 @@ export default function BookingPage({ params }: { params: Promise<{ tenantSlug: 
         {/* Passo 1: Seleção de Veículo e Serviço */}
         {step === 1 && (
           <div>
-            {/* Barra Superior com Botão de Compartilhar */}
+            {/* Barra Superior com Consultar Pontos e Compartilhar */}
             <div className="flex items-center justify-between mb-4">
-              <span className="text-[11px] font-bold text-green-500 uppercase tracking-widest bg-green-500/10 px-2.5 py-1 rounded-full">
-                Agendamento Online
-              </span>
+              <button
+                type="button"
+                onClick={() => {
+                  setQueryResult(null);
+                  setQuerySearched(false);
+                  setIsCheckPointsOpen(true);
+                }}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 text-xs font-bold text-amber-400 transition-colors"
+                title="Consultar meus pontos de fidelidade"
+              >
+                <Award size={13} />
+                <span>Meus Pontos</span>
+              </button>
+
               <button
                 type="button"
                 onClick={handleNativeShare}
-                className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-neutral-850 hover:bg-neutral-800 border border-neutral-750 text-xs font-semibold text-neutral-300 hover:text-white transition-colors"
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-neutral-850 hover:bg-neutral-800 border border-neutral-750 text-xs font-semibold text-neutral-300 hover:text-white transition-colors"
                 title="Compartilhar aplicativo com amigos"
               >
                 <Share2 size={12} className="text-green-500" />
-                <span>Indicar para Amigos</span>
+                <span>Indicar Amigos</span>
               </button>
             </div>
 
@@ -439,7 +506,7 @@ export default function BookingPage({ params }: { params: Promise<{ tenantSlug: 
                 Studio Automotivo
               </p>
               <p className="text-neutral-400 text-sm mt-2">
-                Agende sua lavagem em poucos toques
+                Agende sua lavagem e acumule pontos de fidelidade
               </p>
             </header>
 
@@ -545,7 +612,7 @@ export default function BookingPage({ params }: { params: Promise<{ tenantSlug: 
                 </button>
                 <div>
                   <h1 className="text-lg font-bold text-white">Quase lá!</h1>
-                  <p className="text-xs text-neutral-400">Selecione o horário e insira seus dados</p>
+                  <p className="text-xs text-neutral-400">Selecione o horário e seus dados</p>
                 </div>
               </div>
 
@@ -597,7 +664,7 @@ export default function BookingPage({ params }: { params: Promise<{ tenantSlug: 
                         disabled={isSunday || fullyBooked}
                         onClick={() => {
                           setSelectedDate(day.dateStr);
-                          setSelectedTime(''); // Reseta o horário selecionado
+                          setSelectedTime('');
                         }}
                         className={`flex flex-col items-center justify-center min-w-[62px] py-2 px-1 rounded-xl border transition-all duration-200 ${btnClasses}`}
                       >
@@ -658,7 +725,7 @@ export default function BookingPage({ params }: { params: Promise<{ tenantSlug: 
                   Cadastro do Cliente (Obrigatório)
                 </h3>
                 <p className="text-[11px] text-neutral-500">
-                  Informe seus dados para confirmar a reserva. Se já for cadastrado, preencha o WhatsApp para auto-completar.
+                  Informe seus dados para confirmar a reserva. Se já for cadastrado, preencha o WhatsApp para auto-completar seus dados e pontos.
                 </p>
               </div>
               
@@ -758,7 +825,7 @@ export default function BookingPage({ params }: { params: Promise<{ tenantSlug: 
           </form>
         )}
 
-        {/* Passo 3: Tela Final de Sucesso com Atalhos de Compartilhamento, WhatsApp & Mapa */}
+        {/* Passo 3: Tela Final de Sucesso com Cartão Fidelidade, Compartilhamento & Mapa */}
         {step === 3 && (
           <div className="text-center py-6 flex flex-col items-center">
             <div className="w-16 h-16 bg-green-500/10 text-green-500 rounded-full flex items-center justify-center mb-6">
@@ -771,6 +838,91 @@ export default function BookingPage({ params }: { params: Promise<{ tenantSlug: 
             <p className="text-neutral-400 text-sm mt-4 px-2 leading-relaxed">
               Tudo pronto! Seu agendamento foi registrado com sucesso na nossa fila.
             </p>
+
+            {/* CARTÃO DE FIDELIDADE DIGITAL */}
+            <div className="mt-6 p-5 rounded-2xl bg-gradient-to-br from-amber-950/40 via-neutral-900 to-neutral-950 border border-amber-500/30 text-left w-full shadow-xl relative overflow-hidden">
+              <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center gap-2">
+                  <div className="p-2 rounded-xl bg-amber-500/10 text-amber-400">
+                    <Award size={20} />
+                  </div>
+                  <div>
+                    <h3 className="text-xs font-bold text-white uppercase tracking-wider">
+                      Cartão Fidelidade Brilho Mágico
+                    </h3>
+                    <p className="text-[10px] text-neutral-400">Cliente: {customerName || 'Cliente'}</p>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setIsRulesOpen(true)}
+                  className="p-1.5 rounded-lg bg-neutral-800 hover:bg-neutral-750 text-neutral-300 hover:text-white text-[10px] flex items-center gap-1 font-semibold transition-colors"
+                  title="Ver regras do programa"
+                >
+                  <Info size={12} className="text-amber-400" />
+                  Regras
+                </button>
+              </div>
+
+              {/* Saldo de Pontos */}
+              <div className="flex items-baseline justify-between mb-4 bg-neutral-950/60 p-3 rounded-xl border border-neutral-850">
+                <span className="text-xs text-neutral-400 font-medium">Seu saldo acumulado:</span>
+                <span className="text-lg font-black text-amber-400 flex items-center gap-1">
+                  ⭐ {customerPoints} {customerPoints === 1 ? 'ponto' : 'pontos'}
+                </span>
+              </div>
+
+              {/* Barra de Progresso - Meta 1: Ducha Simples (10 pts) */}
+              <div className="space-y-1.5 mb-3">
+                <div className="flex justify-between text-[11px]">
+                  <span className="font-semibold text-neutral-300 flex items-center gap-1">
+                    🚿 1 Ducha Simples Grátis
+                  </span>
+                  <span className="font-bold text-amber-400">
+                    {Math.min(customerPoints, 10)} / 10 pts
+                  </span>
+                </div>
+                <div className="w-full h-2.5 bg-neutral-950 rounded-full overflow-hidden border border-neutral-800">
+                  <div 
+                    className="h-full bg-gradient-to-r from-amber-500 to-emerald-500 transition-all duration-500 rounded-full"
+                    style={{ width: `${Math.min(100, (customerPoints / 10) * 100)}%` }}
+                  />
+                </div>
+                {customerPoints >= 10 && (
+                  <p className="text-[10px] text-emerald-400 font-bold mt-0.5">
+                    🎉 Parabéns! Você já tem pontos suficientes para resgatar uma Ducha Grátis!
+                  </p>
+                )}
+              </div>
+
+              {/* Barra de Progresso - Meta 2: Lavagem Completa (20 pts) */}
+              <div className="space-y-1.5">
+                <div className="flex justify-between text-[11px]">
+                  <span className="font-semibold text-neutral-300 flex items-center gap-1">
+                    ✨ 1 Lavagem Completa Grátis
+                  </span>
+                  <span className="font-bold text-amber-400">
+                    {Math.min(customerPoints, 20)} / 20 pts
+                  </span>
+                </div>
+                <div className="w-full h-2.5 bg-neutral-950 rounded-full overflow-hidden border border-neutral-800">
+                  <div 
+                    className="h-full bg-gradient-to-r from-amber-500 to-yellow-400 transition-all duration-500 rounded-full"
+                    style={{ width: `${Math.min(100, (customerPoints / 20) * 100)}%` }}
+                  />
+                </div>
+                {customerPoints >= 20 && (
+                  <p className="text-[10px] text-yellow-400 font-bold mt-0.5">
+                    👑 Incrível! Você atingiu 20 pontos e pode resgatar uma Lavagem Completa grátis!
+                  </p>
+                )}
+              </div>
+
+              <p className="text-[10px] text-neutral-500 mt-3.5 border-t border-neutral-800/80 pt-2.5 text-center">
+                💡 A cada lavagem concluída você ganha 1 ponto automático. Seus pontos não expiram!
+              </p>
+            </div>
 
             {/* Banner de Compartilhar com Amigos */}
             <div className="mt-6 p-5 rounded-2xl bg-gradient-to-br from-green-950/40 via-neutral-900 to-neutral-950 border border-green-500/30 text-left w-full shadow-lg">
@@ -912,6 +1064,137 @@ export default function BookingPage({ params }: { params: Promise<{ tenantSlug: 
         )}
 
       </div>
+
+      {/* Modal de Consulta de Pontos do Cliente */}
+      {isCheckPointsOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-xs">
+          <div className="w-full max-w-sm bg-neutral-900 border border-neutral-800 rounded-3xl p-6 shadow-2xl text-left animate-in fade-in zoom-in-95 duration-150">
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-2">
+                <div className="p-2 rounded-xl bg-amber-500/10 text-amber-400">
+                  <Award size={18} />
+                </div>
+                <h3 className="font-bold text-white text-sm">Consultar Pontos</h3>
+              </div>
+              <button 
+                onClick={() => setIsCheckPointsOpen(false)}
+                className="p-1 rounded-lg text-neutral-400 hover:text-white"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <form onSubmit={handleSearchPoints} className="space-y-3 mb-4">
+              <div>
+                <label className="block text-[11px] font-semibold text-neutral-400 mb-1">
+                  Digite seu WhatsApp / Celular:
+                </label>
+                <div className="relative rounded-xl shadow-sm">
+                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                    <Phone className="h-4 w-4 text-neutral-500" />
+                  </div>
+                  <input
+                    type="tel"
+                    required
+                    placeholder="Ex: 38999999999"
+                    value={queryPhone}
+                    onChange={(e) => setQueryPhone(e.target.value)}
+                    className="block w-full pl-10 pr-3 py-2.5 border border-neutral-800 rounded-xl bg-neutral-950 text-neutral-100 placeholder-neutral-500 text-sm focus:outline-none focus:ring-1 focus:ring-amber-500"
+                  />
+                </div>
+              </div>
+
+              <button
+                type="submit"
+                disabled={queryLoading}
+                className="w-full py-2.5 bg-amber-500 hover:bg-amber-400 text-neutral-950 font-bold text-xs rounded-xl transition-colors flex items-center justify-center gap-1.5 shadow-md"
+              >
+                <Search size={14} />
+                {queryLoading ? 'Buscando...' : 'Consultar Saldo'}
+              </button>
+            </form>
+
+            {querySearched && !queryLoading && (
+              <div className="mt-4 pt-4 border-t border-neutral-800">
+                {queryResult ? (
+                  <div className="p-4 rounded-2xl bg-neutral-950 border border-amber-500/30">
+                    <p className="text-xs font-semibold text-neutral-300">Olá, {queryResult.name}!</p>
+                    <div className="flex items-baseline justify-between mt-2">
+                      <span className="text-[11px] text-neutral-400">Saldo Atual:</span>
+                      <span className="text-base font-black text-amber-400">
+                        ⭐ {queryResult.points} {queryResult.points === 1 ? 'ponto' : 'pontos'}
+                      </span>
+                    </div>
+
+                    <div className="mt-3 space-y-1 text-[10px] text-neutral-400">
+                      <p>🚿 Ducha Grátis: {Math.min(queryResult.points, 10)} / 10 pts</p>
+                      <p>✨ Lavagem Completa: {Math.min(queryResult.points, 20)} / 20 pts</p>
+                    </div>
+                  </div>
+                ) : (
+                  <p className="text-xs text-neutral-400 text-center py-2">
+                    Nenhum cadastro encontrado para esse número. Realize seu primeiro agendamento para começar a acumular!
+                  </p>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Modal de Regras de Fidelidade */}
+      {isRulesOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-xs">
+          <div className="w-full max-w-sm bg-neutral-900 border border-neutral-800 rounded-3xl p-6 shadow-2xl text-left animate-in fade-in zoom-in-95 duration-150">
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-2">
+                <div className="p-2 rounded-xl bg-amber-500/10 text-amber-400">
+                  <Sparkles size={18} />
+                </div>
+                <h3 className="font-bold text-white text-sm">Regras do Cartão Fidelidade</h3>
+              </div>
+              <button 
+                onClick={() => setIsRulesOpen(false)}
+                className="p-1 rounded-lg text-neutral-400 hover:text-white"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="space-y-3 text-xs text-neutral-300 leading-relaxed">
+              <div className="p-3 rounded-xl bg-neutral-950 border border-neutral-800">
+                <p className="font-bold text-white mb-1">⭐ Como acumular:</p>
+                <p>A cada lavagem concluída na Brilho Mágico, você ganha <strong>1 ponto</strong> automaticamente no seu número de WhatsApp.</p>
+              </div>
+
+              <div className="space-y-2">
+                <p className="font-bold text-white">🎁 Seus Prêmios:</p>
+                <div className="flex justify-between p-2.5 rounded-xl bg-neutral-950 border border-neutral-800">
+                  <span>🚿 <strong>1 Ducha Simples de Brinde</strong></span>
+                  <span className="font-bold text-emerald-400">10 Pontos</span>
+                </div>
+                <div className="flex justify-between p-2.5 rounded-xl bg-neutral-950 border border-neutral-800">
+                  <span>✨ <strong>1 Lavagem Completa de Brinde</strong></span>
+                  <span className="font-bold text-amber-400">20 Pontos</span>
+                </div>
+              </div>
+
+              <div className="p-3 rounded-xl bg-neutral-950 border border-neutral-800">
+                <p className="font-bold text-white mb-0.5">⏳ Sem Expiração:</p>
+                <p>Seus pontos nunca expiram! Você pode resgatar quando quiser no balcão.</p>
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setIsRulesOpen(false)}
+              className="mt-5 w-full py-2.5 bg-green-600 hover:bg-green-500 text-neutral-950 font-bold rounded-xl text-xs transition-colors"
+            >
+              Entendi
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Botão de Compartilhar no Rodapé */}
       <div className="mt-6 text-center">

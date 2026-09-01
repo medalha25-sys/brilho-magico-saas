@@ -88,6 +88,8 @@ export default function AgendamentosPage() {
   // Atualiza o status do agendamento
   const updateStatus = async (id: string, newStatus: Appointment['status']) => {
     try {
+      const targetApp = appointments.find(a => a.id === id);
+
       const { error } = await supabase
         .from('appointments')
         .update({ status: newStatus })
@@ -96,6 +98,28 @@ export default function AgendamentosPage() {
       if (error) {
         alert("Erro ao atualizar status: " + error.message);
       } else {
+        // Se o agendamento foi finalizado, credita automaticamente +1 ponto de fidelidade para o cliente
+        if (newStatus === 'FINALIZADO' && targetApp) {
+          try {
+            const cleanPhone = targetApp.customer_phone.trim();
+            const { data: customer } = await supabase
+              .from('customers')
+              .select('id, points')
+              .eq('phone', cleanPhone)
+              .maybeSingle();
+
+            if (customer) {
+              const currentPts = Number(customer.points || 0);
+              await supabase
+                .from('customers')
+                .update({ points: currentPts + 1 })
+                .eq('id', customer.id);
+            }
+          } catch (pErr) {
+            console.warn("Aviso ao pontuar cliente de fidelidade:", pErr);
+          }
+        }
+
         // Atualiza o estado localmente
         setAppointments(prev =>
           prev.map(app => app.id === id ? { ...app, status: newStatus } : app)

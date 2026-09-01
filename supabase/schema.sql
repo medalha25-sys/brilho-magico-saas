@@ -45,6 +45,7 @@ CREATE TABLE IF NOT EXISTS customers (
   vehicle_plate TEXT,
   vehicle_model TEXT,
   notes TEXT,
+  points INTEGER DEFAULT 0,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
 );
 
