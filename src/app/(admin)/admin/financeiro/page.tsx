@@ -23,7 +23,7 @@ interface AppointmentTransaction {
   vehicle_plate: string;
   scheduled_at: string;
   total_price: number;
-  status: 'PENDENTE' | 'CONFIRMADO' | 'FINALIZADO' | 'CANCELADO';
+  status: 'PENDENTE' | 'CONFIRMADO' | 'EM_ANDAMENTO' | 'FINALIZADO' | 'CANCELADO';
   services?: {
     name: string;
     price: number;
@@ -612,6 +612,11 @@ export default function FinanceiroPage() {
                           {formatMoney(Number(t.total_price))}
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-xs">
+                          {t.status === 'EM_ANDAMENTO' && (
+                            <span className="px-2.5 py-1 rounded-full font-bold bg-cyan-50 dark:bg-cyan-950/40 text-cyan-600 dark:text-cyan-400 border border-cyan-500/30 animate-pulse">
+                              🔵 Lavando (No Box)
+                            </span>
+                          )}
                           {t.status === 'FINALIZADO' && (
                             <span className="px-2.5 py-1 rounded-full font-semibold bg-blue-50 dark:bg-blue-950/30 text-blue-750 dark:text-blue-400">
                               Finalizado

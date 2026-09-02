@@ -39,7 +39,7 @@ interface Appointment {
   vehicle_plate: string;
   scheduled_at: string;
   total_price: number;
-  status: 'PENDENTE' | 'CONFIRMADO' | 'FINALIZADO' | 'CANCELADO';
+  status: 'PENDENTE' | 'CONFIRMADO' | 'EM_ANDAMENTO' | 'FINALIZADO' | 'CANCELADO';
   notes?: string | null;
   payment_method?: string | null;
   services?: {
@@ -105,7 +105,7 @@ export default function AgendamentosPage() {
   const [selectedServiceId, setSelectedServiceId] = useState('');
   const [customPrice, setCustomPrice] = useState<number | string>('');
   const [scheduledAt, setScheduledAt] = useState('');
-  const [initialStatus, setInitialStatus] = useState<'CONFIRMADO' | 'FINALIZADO' | 'PENDENTE'>('CONFIRMADO');
+  const [initialStatus, setInitialStatus] = useState<'CONFIRMADO' | 'EM_ANDAMENTO' | 'FINALIZADO' | 'PENDENTE'>('EM_ANDAMENTO');
   const [submittingWash, setSubmittingWash] = useState(false);
   const [washError, setWashError] = useState<string | null>(null);
 
@@ -447,6 +447,12 @@ export default function AgendamentosPage() {
             <CheckCircle2 size={12} /> Confirmado
           </span>
         );
+      case 'EM_ANDAMENTO':
+        return (
+          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-cyan-50 dark:bg-cyan-950/40 text-cyan-600 dark:text-cyan-400 border border-cyan-500/30 shadow-xs animate-pulse">
+            <Sparkles size={12} className="animate-spin text-cyan-500" /> Lavando (No Box)
+          </span>
+        );
       case 'FINALIZADO':
         return (
           <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-blue-50 dark:bg-blue-950/30 text-blue-750 dark:text-blue-400">
@@ -550,11 +556,12 @@ export default function AgendamentosPage() {
         <select
           value={statusFilter}
           onChange={(e) => setStatusFilter(e.target.value)}
-          className="block w-full px-3 py-2.5 border border-gray-200 dark:border-gray-800 rounded-xl bg-white dark:bg-gray-950 text-gray-950 dark:text-gray-100 focus:outline-none focus:ring-1 focus:ring-blue-500 text-sm"
+          className="block w-full px-3 py-2.5 border border-gray-200 dark:border-gray-800 rounded-xl bg-white dark:bg-gray-950 text-gray-950 dark:text-gray-100 focus:outline-none focus:ring-1 focus:ring-blue-500 text-sm font-medium"
         >
           <option value="TODOS">Todos os Status</option>
           <option value="PENDENTE">Pendentes</option>
-          <option value="CONFIRMADO">Confirmados</option>
+          <option value="CONFIRMADO">Confirmados (Na Fila)</option>
+          <option value="EM_ANDAMENTO">🔵 Lavando (No Box)</option>
           <option value="FINALIZADO">Finalizados</option>
           <option value="CANCELADO">Cancelados</option>
         </select>
@@ -674,24 +681,40 @@ export default function AgendamentosPage() {
                           <Printer size={16} />
                         </button>
 
+                        {/* Botão Confirmar (se estiver Pendente) */}
                         {app.status === 'PENDENTE' && (
                           <button
                             onClick={() => updateStatus(app.id, 'CONFIRMADO')}
-                            className="p-1.5 rounded-lg text-green-600 hover:bg-green-50 dark:hover:bg-green-950/20 transition-colors"
-                            title="Confirmar Agendamento"
+                            className="p-1.5 rounded-lg text-amber-600 hover:bg-amber-50 dark:hover:bg-amber-950/20 transition-colors"
+                            title="Confirmar Agendamento (Colocar na Fila)"
                           >
                             <CheckCircle2 size={16} />
                           </button>
                         )}
+
+                        {/* Botão Iniciar Lavagem / No Box (se estiver Confirmado ou Pendente) */}
+                        {(app.status === 'CONFIRMADO' || app.status === 'PENDENTE') && (
+                          <button
+                            onClick={() => updateStatus(app.id, 'EM_ANDAMENTO')}
+                            className="p-1.5 rounded-lg text-cyan-600 dark:text-cyan-400 bg-cyan-50/70 dark:bg-cyan-950/40 hover:bg-cyan-100 ring-1 ring-cyan-500/30 transition-colors"
+                            title="Iniciar Lavagem (Colocar no Box / Rampa) 🚗🚿"
+                          >
+                            <Car size={16} className="text-cyan-500" />
+                          </button>
+                        )}
+
+                        {/* Botão Finalizar Serviço (se estiver Em Andamento ou Confirmado) */}
                         {app.status !== 'FINALIZADO' && app.status !== 'CANCELADO' && (
                           <button
                             onClick={() => updateStatus(app.id, 'FINALIZADO')}
                             className="p-1.5 rounded-lg text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-950/20 transition-colors"
-                            title="Finalizar Serviço (+1 ponto de fidelidade)"
+                            title="Finalizar Serviço (+1 ponto de fidelidade & Avisar WhatsApp) 🎉"
                           >
                             <CheckCircle2 size={16} className="text-blue-500" />
                           </button>
                         )}
+
+                        {/* Botão Cancelar */}
                         {app.status !== 'CANCELADO' && (
                           <button
                             onClick={() => updateStatus(app.id, 'CANCELADO')}
@@ -891,15 +914,23 @@ export default function AgendamentosPage() {
                   </label>
                   <select
                     value={initialStatus}
-                    onChange={(e) => setInitialStatus(e.target.value as 'CONFIRMADO' | 'FINALIZADO' | 'PENDENTE')}
+                    onChange={(e) => setInitialStatus(e.target.value as 'CONFIRMADO' | 'EM_ANDAMENTO' | 'FINALIZADO' | 'PENDENTE')}
                     className="block w-full px-3 py-2.5 border border-gray-200 dark:border-gray-800 rounded-xl bg-white dark:bg-gray-900 text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 font-semibold"
                   >
-                    <option value="CONFIRMADO">🟡 Confirmado (Na Fila / Lavando)</option>
+                    <option value="EM_ANDAMENTO">🔵 Lavando (Já está no Box / Rampa)</option>
+                    <option value="CONFIRMADO">🟡 Confirmado (Na Fila de Espera)</option>
                     <option value="FINALIZADO">🟢 Finalizado (Concluído & Pago)</option>
                     <option value="PENDENTE">⚪ Pendente</option>
                   </select>
                 </div>
               </div>
+
+              {initialStatus === 'EM_ANDAMENTO' && (
+                <div className="p-3 rounded-xl bg-cyan-50 dark:bg-cyan-950/20 border border-cyan-200 dark:border-cyan-800 text-xs text-cyan-900 dark:text-cyan-300 flex items-center gap-2">
+                  <Car size={16} className="text-cyan-500 shrink-0" />
+                  <span>O veículo entrará com status <strong>Lavando (No Box)</strong> em tempo real.</span>
+                </div>
+              )}
 
               {initialStatus === 'FINALIZADO' && (
                 <div className="p-3 rounded-xl bg-blue-50 dark:bg-blue-950/20 border border-blue-100 dark:border-blue-900 text-xs text-blue-900 dark:text-blue-300 flex items-center gap-2">

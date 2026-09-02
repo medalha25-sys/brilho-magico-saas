@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useEffect, useState } from 'react';
-import { Calendar, DollarSign, Users, Clock, ArrowRight, Share2, Check } from 'lucide-react';
+import { Calendar, DollarSign, Users, Clock, ArrowRight, Share2, Check, Car, Sparkles } from 'lucide-react';
 import { createClient } from '@/utils/supabase/client';
 import Link from 'next/link';
 
@@ -28,10 +28,11 @@ export default function AdminDashboard() {
 
   // States para estatísticas
   const [scheduledToday, setScheduledToday] = useState(0);
+  const [washingNow, setWashingNow] = useState(0);
   const [revenueToday, setRevenueToday] = useState(0);
   const [totalCustomers, setTotalCustomers] = useState(0);
   const [avgDuration, setAvgDuration] = useState(0);
-  const [tenantSlug, setTenantSlug] = useState('wash-express');
+  const [tenantSlug, setTenantSlug] = useState('brilho-magico');
   const [tenantName, setTenantName] = useState('Brilho Mágico');
   const [copiedLink, setCopiedLink] = useState(false);
 
@@ -124,6 +125,10 @@ export default function AdminDashboard() {
 
           // Agendados hoje
           setScheduledToday(todayApps.length);
+
+          // Veículos lavando no box agora
+          const inProgress = appointmentsList.filter(app => app.status === 'EM_ANDAMENTO').length;
+          setWashingNow(inProgress);
 
           // Faturamento hoje (soma dos que não estão cancelados)
           const todayRev = todayApps
@@ -231,6 +236,29 @@ export default function AdminDashboard() {
               <p className="text-3xl font-bold text-gray-900 dark:text-white">{scheduledToday}</p>
               <span className="text-gray-400 text-xs font-medium">Lavagens hoje</span>
             </div>
+
+            {/* No Box / Lavando Agora */}
+            <div className={`bg-white dark:bg-gray-950 rounded-xl shadow-sm p-6 border text-left transition-all ${
+              washingNow > 0 
+                ? 'border-cyan-500/40 bg-cyan-950/10 shadow-[0_0_15px_rgba(6,182,212,0.1)]' 
+                : 'border-gray-100 dark:border-gray-800'
+            }`}>
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-gray-500 dark:text-gray-400 text-sm font-medium">No Box / Lavando</h3>
+                <div className="p-2 bg-cyan-50 dark:bg-cyan-900/30 rounded-lg">
+                  <Car className="h-5 w-5 text-cyan-600 dark:text-cyan-400" />
+                </div>
+              </div>
+              <div className="flex items-baseline gap-2">
+                <p className="text-3xl font-bold text-cyan-600 dark:text-cyan-400">{washingNow}</p>
+                {washingNow > 0 && (
+                  <span className="inline-flex items-center gap-1 text-[10px] font-bold text-cyan-600 dark:text-cyan-400 animate-pulse">
+                    <Sparkles size={10} className="animate-spin" /> Em andamento
+                  </span>
+                )}
+              </div>
+              <span className="text-gray-400 text-xs font-medium">Veículos no pátio agora</span>
+            </div>
             
             {/* Faturamento Hoje */}
             <div className="bg-white dark:bg-gray-950 rounded-xl shadow-sm p-6 border border-gray-100 dark:border-gray-800 text-left flex flex-col justify-between min-h-[140px]">
@@ -261,7 +289,7 @@ export default function AdminDashboard() {
               </div>
             </div>
 
-            {/* Novos Clientes */}
+            {/* Total de Clientes */}
             <div className="bg-white dark:bg-gray-950 rounded-xl shadow-sm p-6 border border-gray-100 dark:border-gray-800 text-left">
               <div className="flex items-center justify-between mb-4">
                 <h3 className="text-gray-500 dark:text-gray-400 text-sm font-medium">Total de Clientes</h3>
@@ -271,18 +299,6 @@ export default function AdminDashboard() {
               </div>
               <p className="text-3xl font-bold text-gray-900 dark:text-white">{totalCustomers}</p>
               <span className="text-gray-400 text-xs font-medium">Clientes únicos cadastrados</span>
-            </div>
-
-            {/* Tempo Médio */}
-            <div className="bg-white dark:bg-gray-950 rounded-xl shadow-sm p-6 border border-gray-100 dark:border-gray-800 text-left">
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="text-gray-500 dark:text-gray-400 text-sm font-medium">Duração Média</h3>
-                <div className="p-2 bg-orange-50 dark:bg-orange-900/30 rounded-lg">
-                  <Clock className="h-5 w-5 text-orange-600 dark:text-orange-400" />
-                </div>
-              </div>
-              <p className="text-3xl font-bold text-gray-900 dark:text-white">{avgDuration}m</p>
-              <span className="text-gray-400 text-xs font-medium">Tempo médio de serviços</span>
             </div>
           </div>
 
@@ -330,9 +346,23 @@ export default function AdminDashboard() {
                           {formatDateLabel(app.scheduled_at)} às {formatTime(app.scheduled_at)}
                         </td>
                         <td className="px-4 py-3 text-xs">
-                          <span className="px-2.5 py-1 rounded-full font-semibold bg-yellow-50 dark:bg-yellow-950/30 text-yellow-750 dark:text-yellow-400">
-                            {app.status}
-                          </span>
+                          {app.status === 'EM_ANDAMENTO' ? (
+                            <span className="px-2.5 py-1 rounded-full font-bold bg-cyan-50 dark:bg-cyan-950/40 text-cyan-600 dark:text-cyan-400 border border-cyan-500/30 animate-pulse">
+                              🔵 Lavando
+                            </span>
+                          ) : app.status === 'CONFIRMADO' ? (
+                            <span className="px-2.5 py-1 rounded-full font-semibold bg-green-50 dark:bg-green-950/30 text-green-750 dark:text-green-400">
+                              Confirmado
+                            </span>
+                          ) : app.status === 'FINALIZADO' ? (
+                            <span className="px-2.5 py-1 rounded-full font-semibold bg-blue-50 dark:bg-blue-950/30 text-blue-750 dark:text-blue-400">
+                              Finalizado
+                            </span>
+                          ) : (
+                            <span className="px-2.5 py-1 rounded-full font-semibold bg-yellow-50 dark:bg-yellow-950/30 text-yellow-750 dark:text-yellow-400">
+                              {app.status}
+                            </span>
+                          )}
                         </td>
                       </tr>
                     ))}
