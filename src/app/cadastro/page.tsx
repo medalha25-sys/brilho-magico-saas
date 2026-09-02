@@ -220,9 +220,11 @@ export default function CadastroTrialPage() {
       <header className="border-b border-gray-800/80 bg-gray-900/50 backdrop-blur-md sticky top-0 z-50">
         <div className="max-w-6xl mx-auto px-4 py-4 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-emerald-600 to-teal-400 flex items-center justify-center font-black text-black text-base shadow-lg shadow-emerald-500/20">
-              ⚡
-            </div>
+            <img 
+              src="/logo-k.png" 
+              alt="Kryon Systems" 
+              className="w-9 h-9 rounded-xl object-contain shadow-lg shadow-blue-500/20"
+            />
             <div>
               <span className="font-extrabold text-white text-base tracking-tight block">KRYON SYSTEMS</span>
               <span className="text-[10px] text-emerald-400 font-bold tracking-wider uppercase block -mt-0.5">
