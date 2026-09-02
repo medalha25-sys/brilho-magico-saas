@@ -18,7 +18,8 @@ import {
   Car, 
   DollarSign, 
   FileText,
-  Sparkles
+  Sparkles,
+  MessageCircle
 } from 'lucide-react';
 
 interface ServiceItem {
@@ -65,6 +66,35 @@ export default function AgendamentosPage() {
   const [tenantInfo, setTenantInfo] = useState<TenantInfo | null>(null);
   const [tenantId, setTenantId] = useState<string | null>(null);
   const [printApp, setPrintApp] = useState<Appointment | null>(null);
+  const [readyAppModal, setReadyAppModal] = useState<Appointment | null>(null);
+
+  // Helper para gerar o link do WhatsApp para avisar que o veículo está pronto ou confirmar
+  const getWhatsAppMessageUrl = (app: Appointment, type: 'READY' | 'CONFIRM') => {
+    const rawPhone = (app.customer_phone || '').replace(/\D/g, '');
+    if (!rawPhone) return '#';
+
+    const serviceName = app.services?.name || 'Lavagem';
+    const plate = app.vehicle_plate ? app.vehicle_plate.toUpperCase() : '';
+    const name = app.customer_name ? app.customer_name.trim() : 'Cliente';
+    const companyName = tenantInfo?.name || 'Brilho Mágico';
+
+    let text = '';
+    if (type === 'READY') {
+      text = `🎉 *Olá, ${name}!* Seu veículo *${plate}* está *PRONTO, LIMPO E CHEIROSO* te esperando na *${companyName}*! 🚗✨\n\n` +
+             `• *Serviço Realizado:* ${serviceName}\n` +
+             `• *Valor:* R$ ${Number(app.total_price).toFixed(2)}\n\n` +
+             `Já pode vir fazer a retirada quando desejar! Agradecemos muito a sua preferência. ⭐`;
+    } else {
+      const dateStr = formatDateTime(app.scheduled_at);
+      text = `🚗 *Olá, ${name}!* Confirmamos o agendamento do seu veículo *${plate}* na *${companyName}*:\n\n` +
+             `• *Serviço:* ${serviceName}\n` +
+             `• *Data/Horário:* ${dateStr}\n` +
+             `• *Valor:* R$ ${Number(app.total_price).toFixed(2)}\n\n` +
+             `Qualquer dúvida estamos à disposição!`;
+    }
+
+    return `https://wa.me/55${rawPhone}?text=${encodeURIComponent(text)}`;
+  };
 
   // Estados do Modal "Lançar Nova Lavagem" (Entrada no Balcão)
   const [isNewWashOpen, setIsNewWashOpen] = useState(false);
@@ -344,6 +374,11 @@ export default function AgendamentosPage() {
           }
         }
 
+        // Se o agendamento foi finalizado, abre a janelinha para avisar o cliente no WhatsApp
+        if (newStatus === 'FINALIZADO' && targetApp) {
+          setReadyAppModal({ ...targetApp, status: 'FINALIZADO' });
+        }
+
         // Atualiza o estado localmente
         setAppointments(prev =>
           prev.map(app => app.id === id ? { ...app, status: newStatus } : app)
@@ -614,7 +649,22 @@ export default function AgendamentosPage() {
 
                     {/* Ações */}
                     <td className="px-6 py-4 whitespace-nowrap text-center text-sm font-medium">
-                      <div className="flex items-center justify-center gap-2">
+                      <div className="flex items-center justify-center gap-1.5">
+                        {/* Botão de WhatsApp: Avisar que o carro está pronto ou mensagem */}
+                        <a
+                          href={getWhatsAppMessageUrl(app, app.status === 'FINALIZADO' ? 'READY' : 'CONFIRM')}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className={`p-1.5 rounded-lg transition-colors flex items-center justify-center ${
+                            app.status === 'FINALIZADO'
+                              ? 'text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/40 hover:bg-emerald-100 ring-1 ring-emerald-500/30'
+                              : 'text-green-600 dark:text-green-400 hover:bg-green-50 dark:hover:bg-green-950/20'
+                          }`}
+                          title={app.status === 'FINALIZADO' ? "Avisar no WhatsApp: Veículo Pronto para Retirada! 🚗✨" : "Conversar no WhatsApp"}
+                        >
+                          <MessageCircle size={16} />
+                        </a>
+
                         {/* Botão Imprimir Ordem de Serviço (Cupom 80mm) */}
                         <button
                           onClick={() => handlePrintReceipt(app)}
@@ -954,6 +1004,82 @@ export default function AgendamentosPage() {
           </div>
           <div style={{ textAlign: 'center', fontSize: '8px', color: '#555', marginTop: '4px' }}>
             Kryon Systems - v1.0.0
+          </div>
+        </div>
+      )}
+
+      {/* Modal: Veículo Pronto para Retirada (Avisar Cliente no WhatsApp) */}
+      {readyAppModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-150">
+          <div className="w-full max-w-md bg-white dark:bg-gray-950 border border-gray-150 dark:border-gray-800 rounded-3xl p-6 shadow-2xl animate-in zoom-in-95 duration-150 text-left">
+            <div className="flex items-center justify-between mb-4 pb-3 border-b border-gray-100 dark:border-gray-800">
+              <div className="flex items-center gap-3">
+                <div className="p-2.5 rounded-2xl bg-emerald-500/10 text-emerald-500">
+                  <Sparkles size={24} />
+                </div>
+                <div>
+                  <h3 className="font-bold text-gray-900 dark:text-white text-base">Lavagem Finalizada! 🎉</h3>
+                  <p className="text-xs text-emerald-600 dark:text-emerald-400 font-medium">Veículo pronto para retirada</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setReadyAppModal(null)}
+                className="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-400 hover:text-gray-700 dark:hover:text-white"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="p-4 rounded-2xl bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-800 mb-4 space-y-2 text-xs">
+              <div className="flex justify-between items-center">
+                <span className="text-gray-500">Cliente:</span>
+                <span className="font-bold text-gray-900 dark:text-white">{readyAppModal.customer_name}</span>
+              </div>
+              <div className="flex justify-between items-center">
+                <span className="text-gray-500">WhatsApp:</span>
+                <span className="font-bold text-green-600 dark:text-green-400 font-mono">{readyAppModal.customer_phone}</span>
+              </div>
+              <div className="flex justify-between items-center">
+                <span className="text-gray-500">Veículo / Placa:</span>
+                <span className="font-bold font-mono px-2 py-0.5 rounded bg-gray-200 dark:bg-gray-800 text-gray-900 dark:text-white">
+                  {readyAppModal.vehicle_plate.toUpperCase()}
+                </span>
+              </div>
+              <div className="flex justify-between items-center">
+                <span className="text-gray-500">Serviço:</span>
+                <span className="font-semibold text-gray-800 dark:text-gray-200">{readyAppModal.services?.name || 'Lavagem'}</span>
+              </div>
+              <div className="flex justify-between items-center pt-2 border-t border-gray-200 dark:border-gray-800">
+                <span className="text-gray-500 font-semibold">Valor Total:</span>
+                <span className="font-black text-sm text-emerald-600 dark:text-emerald-400">R$ {Number(readyAppModal.total_price).toFixed(2)}</span>
+              </div>
+            </div>
+
+            <p className="text-xs text-gray-500 dark:text-gray-400 mb-4 text-center">
+              Deseja enviar uma mensagem no WhatsApp avisando o cliente que o carro já está limpo e disponível para retirada?
+            </p>
+
+            <div className="flex flex-col gap-2">
+              <a
+                href={getWhatsAppMessageUrl(readyAppModal, 'READY')}
+                target="_blank"
+                rel="noopener noreferrer"
+                onClick={() => setReadyAppModal(null)}
+                className="w-full py-3.5 px-4 rounded-2xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-sm flex items-center justify-center gap-2 shadow-lg shadow-emerald-600/20 transition-all hover:scale-[1.01] active:scale-95 text-center"
+              >
+                <MessageCircle size={18} />
+                <span>Avisar no WhatsApp (Carro Pronto 🚗✨)</span>
+              </a>
+
+              <button
+                type="button"
+                onClick={() => setReadyAppModal(null)}
+                className="w-full py-2.5 px-4 rounded-xl text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 text-xs font-semibold hover:bg-gray-100 dark:hover:bg-gray-900 transition-colors"
+              >
+                Agora não / Fechar
+              </button>
+            </div>
           </div>
         </div>
       )}
