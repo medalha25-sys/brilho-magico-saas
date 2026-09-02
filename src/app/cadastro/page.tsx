@@ -99,6 +99,7 @@ export default function CadastroTrialPage() {
         password: password,
         options: {
           data: {
+            full_name: ownerName.trim(),
             name: ownerName.trim(),
             role: 'ADMIN'
           }
