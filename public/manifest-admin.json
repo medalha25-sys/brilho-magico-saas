@@ -1,14 +1,14 @@
 {
-  "name": "Brilho Mágico - Agendamento",
-  "short_name": "Brilho Mágico",
-  "description": "Agendamento online de lavagens e estética automotiva sem filas.",
-  "start_url": "/agendar/brilho-magico",
-  "id": "brilho-magico-cliente-pwa",
+  "name": "Brilho Mágico - Painel de Gestão",
+  "short_name": "Gestão Brilho",
+  "description": "Painel de controle e gestão do lava-rápido Brilho Mágico.",
+  "start_url": "/admin/dashboard",
+  "id": "brilho-magico-admin-pwa",
   "display": "standalone",
-  "background_color": "#0a0a0a",
-  "theme_color": "#22c55e",
+  "background_color": "#030712",
+  "theme_color": "#2563eb",
   "orientation": "portrait-primary",
-  "scope": "/agendar/",
+  "scope": "/admin/",
   "icons": [
     {
       "src": "/icon-72.png",
@@ -66,7 +66,7 @@
     }
   ],
   "categories": [
-    "utilities",
-    "lifestyle"
+    "business",
+    "productivity"
   ]
 }

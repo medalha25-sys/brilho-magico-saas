@@ -1,6 +1,8 @@
-const CACHE_NAME = 'brilho-magico-pwa-v3';
+const CACHE_NAME = 'brilho-magico-pwa-v4';
 
 const STATIC_ASSETS = [
+  '/manifest-cliente.json',
+  '/manifest-admin.json',
   '/manifest.json',
   '/logo.jpg',
   '/icon-72.png',
@@ -43,9 +45,9 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // Não intercepta chamadas de API, Supabase ou rotas do painel /admin para garantir dados e páginas sempre 100% atualizados
+  // Não intercepta chamadas de API, Supabase, autenticação ou rotas do painel /admin para garantir dados e páginas sempre 100% atualizados
   const url = new URL(event.request.url);
-  if (url.pathname.startsWith('/admin') || url.pathname.startsWith('/api') || url.hostname.includes('supabase')) {
+  if (url.pathname.startsWith('/admin') || url.pathname.startsWith('/login') || url.pathname.startsWith('/api') || url.hostname.includes('supabase')) {
     return;
   }
 
