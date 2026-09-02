@@ -86,28 +86,13 @@ export default function AdminLayoutClient({
     }
   };
 
-  // Troca rápida para contas padrão da empresa
-  const handleQuickSwitch = async (email: string, pass: string) => {
-    setSwitchLoading(true);
+  // Abre o modal de troca autenticada para um usuário ou nova conta
+  const handleOpenSwitchModal = (email?: string) => {
+    setUserDropdownOpen(false);
+    setSwitchEmail(email || '');
+    setSwitchPassword('');
     setSwitchError(null);
-    try {
-      await supabase.auth.signOut();
-      const { error } = await supabase.auth.signInWithPassword({
-        email,
-        password: pass
-      });
-
-      if (error) {
-        setSwitchError(error.message);
-        setSwitchLoading(false);
-        return;
-      }
-
-      window.location.href = '/admin/dashboard';
-    } catch {
-      setSwitchError("Erro ao alternar de usuário.");
-      setSwitchLoading(false);
-    }
+    setSwitchModalOpen(true);
   };
 
   // Troca personalizada para outro usuário
@@ -323,17 +308,16 @@ export default function AdminLayoutClient({
                     </div>
                   </div>
 
-                  {/* Seção: Trocar de Usuário (Acesso Rápido) */}
+                  {/* Seção: Trocar de Usuário */}
                   <div className="p-3 border-b border-gray-100 dark:border-gray-800 space-y-1">
                     <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block px-2 mb-1.5">
-                      Trocar de Usuário (Acesso Rápido)
+                      Trocar de Usuário
                     </span>
 
                     {/* Alternar para Claudio Junior */}
                     <button
                       type="button"
-                      disabled={switchLoading}
-                      onClick={() => handleQuickSwitch('claudio2017hnd@gmail.com', '123456')}
+                      onClick={() => handleOpenSwitchModal('claudio2017hnd@gmail.com')}
                       className={`w-full flex items-center justify-between p-2 rounded-xl text-left transition-colors text-xs ${
                         userName.toLowerCase().includes('claudio')
                           ? 'bg-blue-50/70 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 font-bold'
@@ -349,16 +333,17 @@ export default function AdminLayoutClient({
                           <p className="text-[10px] text-gray-400">Admin</p>
                         </div>
                       </div>
-                      {userName.toLowerCase().includes('claudio') && (
+                      {userName.toLowerCase().includes('claudio') ? (
                         <UserCheck size={14} className="text-blue-600" />
+                      ) : (
+                        <span className="text-[10px] text-blue-600 dark:text-blue-400 font-semibold">Acessar</span>
                       )}
                     </button>
 
                     {/* Alternar para Monaliza Rodrigues */}
                     <button
                       type="button"
-                      disabled={switchLoading}
-                      onClick={() => handleQuickSwitch('monalizarodrigueshnd@gmail.com', '123456')}
+                      onClick={() => handleOpenSwitchModal('monalizarodrigueshnd@gmail.com')}
                       className={`w-full flex items-center justify-between p-2 rounded-xl text-left transition-colors text-xs ${
                         userName.toLowerCase().includes('monaliza')
                           ? 'bg-blue-50/70 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 font-bold'
@@ -374,18 +359,17 @@ export default function AdminLayoutClient({
                           <p className="text-[10px] text-gray-400">Gerente</p>
                         </div>
                       </div>
-                      {userName.toLowerCase().includes('monaliza') && (
+                      {userName.toLowerCase().includes('monaliza') ? (
                         <UserCheck size={14} className="text-blue-600" />
+                      ) : (
+                        <span className="text-[10px] text-pink-600 dark:text-pink-400 font-semibold">Acessar</span>
                       )}
                     </button>
 
                     {/* Botão para entrar com outra conta */}
                     <button
                       type="button"
-                      onClick={() => {
-                        setUserDropdownOpen(false);
-                        setSwitchModalOpen(true);
-                      }}
+                      onClick={() => handleOpenSwitchModal('')}
                       className="w-full flex items-center gap-2 p-2 rounded-xl text-left hover:bg-gray-100 dark:hover:bg-gray-900 text-gray-600 dark:text-gray-400 text-xs transition-colors"
                     >
                       <UserPlus size={14} />

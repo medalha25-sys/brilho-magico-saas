@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useEffect, useState } from 'react';
-import { Calendar, DollarSign, Users, Clock, ArrowRight, Share2, Check, Car, Sparkles } from 'lucide-react';
+import { Calendar, DollarSign, Users, ArrowRight, Share2, Check, Car, Sparkles, Eye, EyeOff, Lock } from 'lucide-react';
 import { createClient } from '@/utils/supabase/client';
 import Link from 'next/link';
 
@@ -23,8 +23,9 @@ export default function AdminDashboard() {
   const supabase = createClient();
   const [loading, setLoading] = useState(true);
   
-  // Níveis de acesso para faturamento
-  const [revenueVisible, setRevenueVisible] = useState(false);
+  // Níveis de acesso para faturamento baseados no perfil autenticado
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [revenueVisible, setRevenueVisible] = useState(true);
 
   // States para estatísticas
   const [scheduledToday, setScheduledToday] = useState(0);
@@ -38,15 +39,6 @@ export default function AdminDashboard() {
 
   // Lista de próximos agendamentos
   const [upcomingAppointments, setUpcomingAppointments] = useState<Appointment[]>([]);
-
-  const handleRevealRevenue = () => {
-    const password = prompt("Digite a senha do Administrador para ver o faturamento:");
-    if (password === '123456') {
-      setRevenueVisible(true);
-    } else if (password !== null) {
-      alert("Senha incorreta!");
-    }
-  };
 
   const handleShareStore = async () => {
     const url = `https://brilho-magico-saas.vercel.app/agendar/${tenantSlug || 'wash-express'}`;
@@ -84,9 +76,11 @@ export default function AdminDashboard() {
 
       if (profile) {
         if (profile.role === 'ADMIN') {
+          setIsAdmin(true);
           setRevenueVisible(true);
         } else {
-          setRevenueVisible(false); // Reseta para segurança caso troque de conta
+          setIsAdmin(false);
+          setRevenueVisible(false);
         }
       }
 
@@ -265,25 +259,41 @@ export default function AdminDashboard() {
               <div>
                 <div className="flex items-center justify-between mb-2">
                   <h3 className="text-gray-500 dark:text-gray-400 text-sm font-medium">Faturamento Hoje</h3>
-                  <div className="p-2 bg-green-50 dark:bg-green-900/30 rounded-lg">
-                    <DollarSign className="h-5 w-5 text-green-600 dark:text-green-400" />
+                  <div className="flex items-center gap-1.5">
+                    {isAdmin && (
+                      <button
+                        type="button"
+                        onClick={() => setRevenueVisible(!revenueVisible)}
+                        className="p-1 rounded-lg text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+                        title={revenueVisible ? "Ocultar valores (Modo Privacidade)" : "Exibir valores"}
+                      >
+                        {revenueVisible ? <EyeOff size={15} /> : <Eye size={15} />}
+                      </button>
+                    )}
+                    <div className="p-2 bg-green-50 dark:bg-green-900/30 rounded-lg text-green-600 dark:text-green-400">
+                      <DollarSign className="h-5 w-5" />
+                    </div>
                   </div>
                 </div>
                 
-                {revenueVisible ? (
-                  <>
-                    <p className="text-3xl font-bold text-gray-900 dark:text-white">R$ {revenueToday.toFixed(2)}</p>
-                    <span className="text-gray-450 text-xs font-medium mt-1 block">Confirmados e Pendentes</span>
-                  </>
+                {isAdmin ? (
+                  revenueVisible ? (
+                    <>
+                      <p className="text-3xl font-bold text-gray-900 dark:text-white">R$ {revenueToday.toFixed(2)}</p>
+                      <span className="text-gray-450 text-xs font-medium mt-1 block">Confirmados e Pendentes</span>
+                    </>
+                  ) : (
+                    <div className="flex flex-col gap-1 mt-1">
+                      <p className="text-2xl font-bold text-gray-400 filter blur-xs select-none">R$ ••••••</p>
+                      <span className="text-[11px] text-gray-400 font-medium">Modo privacidade ativo</span>
+                    </div>
+                  )
                 ) : (
-                  <div className="flex flex-col gap-2 mt-1">
-                    <p className="text-2xl font-bold text-gray-900 dark:text-white filter blur-md select-none">R$ 999.99</p>
-                    <button
-                      onClick={handleRevealRevenue}
-                      className="w-full flex items-center justify-center gap-1.5 py-1.5 px-3 rounded-xl bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 text-[10px] font-bold text-gray-700 dark:text-gray-300 transition-colors border border-gray-150 dark:border-gray-700"
-                    >
-                      🔑 Revelar Faturamento
-                    </button>
+                  <div className="flex flex-col gap-1 mt-2 p-2.5 rounded-xl bg-gray-50 dark:bg-gray-900 border border-gray-150 dark:border-gray-800 text-[11px] text-gray-500">
+                    <div className="flex items-center gap-1 text-amber-600 dark:text-amber-400 font-bold">
+                      <Lock size={12} /> Acesso Restrito
+                    </div>
+                    <span>Apenas Administradores têm acesso ao faturamento.</span>
                   </div>
                 )}
               </div>

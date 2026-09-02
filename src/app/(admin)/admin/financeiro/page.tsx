@@ -12,7 +12,10 @@ import {
   FileText, 
   BarChart3,
   Award,
-  Tag
+  Tag,
+  Eye,
+  EyeOff,
+  Lock
 } from 'lucide-react';
 
 interface AppointmentTransaction {
@@ -46,23 +49,14 @@ export default function FinanceiroPage() {
   const [loading, setLoading] = useState(true);
   const [allAppointments, setAllAppointments] = useState<AppointmentTransaction[]>([]);
   const [tenantInfo, setTenantInfo] = useState<TenantInfo | null>(null);
-  const [revenueVisible, setRevenueVisible] = useState(false);
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [revenueVisible, setRevenueVisible] = useState(true);
 
   // Filtros de Período
   const [period, setPeriod] = useState<PeriodType>('MENSAL');
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
   const [tableSearch, setTableSearch] = useState('');
-
-  // Revelar faturamento para não-admins
-  const handleRevealRevenue = () => {
-    const password = prompt("Digite a senha do Administrador para ver os valores financeiros:");
-    if (password === '123456') {
-      setRevenueVisible(true);
-    } else if (password !== null) {
-      alert("Senha incorreta!");
-    }
-  };
 
   // Carrega todos os agendamentos e transações
   const loadFinanceData = async () => {
@@ -79,7 +73,11 @@ export default function FinanceiroPage() {
 
       if (profile) {
         if (profile.role === 'ADMIN') {
+          setIsAdmin(true);
           setRevenueVisible(true);
+        } else {
+          setIsAdmin(false);
+          setRevenueVisible(false);
         }
       }
 
@@ -423,31 +421,45 @@ export default function FinanceiroPage() {
                   <h3 className="text-gray-500 dark:text-gray-400 text-xs font-bold uppercase tracking-wider">
                     Faturamento ({getPeriodLabel()})
                   </h3>
-                  <div className="p-2 bg-green-50 dark:bg-green-900/30 rounded-xl">
-                    <DollarSign className="h-5 w-5 text-green-600 dark:text-green-400" />
+                  <div className="flex items-center gap-1.5">
+                    {isAdmin && (
+                      <button
+                        type="button"
+                        onClick={() => setRevenueVisible(!revenueVisible)}
+                        className="p-1 rounded-lg text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+                        title={revenueVisible ? "Ocultar valores (Modo Privacidade)" : "Exibir valores"}
+                      >
+                        {revenueVisible ? <EyeOff size={15} /> : <Eye size={15} />}
+                      </button>
+                    )}
+                    <div className="p-2 bg-green-50 dark:bg-green-900/30 rounded-xl text-green-600 dark:text-green-400">
+                      <DollarSign className="h-5 w-5" />
+                    </div>
                   </div>
                 </div>
 
-                {revenueVisible ? (
-                  <>
-                    <p className="text-3xl font-black text-gray-900 dark:text-white mt-1">
-                      {formatMoney(totalRevenue)}
-                    </p>
-                    <span className="text-[11px] text-gray-400 mt-1 block">
-                      Total líquido confirmado e realizado
-                    </span>
-                  </>
+                {isAdmin ? (
+                  revenueVisible ? (
+                    <>
+                      <p className="text-3xl font-black text-gray-900 dark:text-white mt-1">
+                        {formatMoney(totalRevenue)}
+                      </p>
+                      <span className="text-[11px] text-gray-400 mt-1 block">
+                        Total líquido confirmado e realizado
+                      </span>
+                    </>
+                  ) : (
+                    <div className="flex flex-col gap-1 mt-1">
+                      <p className="text-2xl font-bold text-gray-400 filter blur-xs select-none">R$ ••••••</p>
+                      <span className="text-[11px] text-gray-400 font-medium">Modo privacidade ativo</span>
+                    </div>
+                  )
                 ) : (
-                  <div className="flex flex-col gap-2 mt-1">
-                    <p className="text-2xl font-bold text-gray-900 dark:text-white filter blur-md select-none">
-                      R$ 999.99
-                    </p>
-                    <button
-                      onClick={handleRevealRevenue}
-                      className="w-full flex items-center justify-center gap-1.5 py-1.5 px-3 rounded-xl bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 text-[10px] font-bold text-gray-700 dark:text-gray-300 transition-colors border border-gray-150 dark:border-gray-700"
-                    >
-                      🔑 Revelar Faturamento
-                    </button>
+                  <div className="flex flex-col gap-1 mt-2 p-2.5 rounded-xl bg-gray-50 dark:bg-gray-900 border border-gray-150 dark:border-gray-800 text-[11px] text-gray-500">
+                    <div className="flex items-center gap-1 text-amber-600 dark:text-amber-400 font-bold">
+                      <Lock size={12} /> Acesso Restrito
+                    </div>
+                    <span>Apenas Administradores têm acesso aos relatórios financeiros.</span>
                   </div>
                 )}
               </div>
