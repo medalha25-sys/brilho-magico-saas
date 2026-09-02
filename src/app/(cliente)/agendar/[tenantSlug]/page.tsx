@@ -2112,6 +2112,14 @@ export default function BookingPage({ params }: { params: Promise<{ tenantSlug: 
       <footer className="mt-4 text-center text-[11px] text-neutral-500 max-w-xs mx-auto leading-relaxed">
         <p className="font-semibold text-neutral-400">📍 Endereço:</p>
         <p>{tenantInfo?.address || 'Avenida Florips Crispim, N 644 - Bairro Novo Panorama, Salinas - MG'}</p>
+        <div className="mt-3">
+          <a
+            href="/login"
+            className="inline-flex items-center gap-1 text-[10px] text-neutral-500 hover:text-neutral-300 transition-colors py-1 px-2.5 rounded-lg border border-neutral-800 bg-neutral-900/50"
+          >
+            <span>🔒 Acesso da Equipe</span>
+          </a>
+        </div>
       </footer>
 
       {/* Footer Criado por Kryon Systems */}
