@@ -155,38 +155,30 @@ export default function CadastroTrialPage() {
         console.warn("Aviso ao atualizar perfil:", profileError.message);
       }
 
-      // 5. Cadastra Serviços Padrão de Boas-Vindas
+      // 5. Cadastra Serviços Padrão de Boas-Vindas da Brilho Mágico
       const defaultServices = [
         {
           tenant_id: tenantId,
-          name: 'Limpeza Básica & Aspiração',
-          vehicle_type: 'CARRO',
-          price: 60,
+          name: 'Lavada Básica + Verniz',
+          vehicle_type: 'MOTO',
+          price: 40,
+          duration_minutes: 30,
+          is_active: true
+        },
+        {
+          tenant_id: tenantId,
+          name: 'Lavada com Detmol + Verniz',
+          vehicle_type: 'MOTO',
+          price: 50,
           duration_minutes: 45,
           is_active: true
         },
         {
           tenant_id: tenantId,
-          name: 'Lavagem Completa com Cera',
-          vehicle_type: 'CARRO',
-          price: 90,
+          name: 'Lavada Completa Revitalização + Verniz com Detmol',
+          vehicle_type: 'MOTO',
+          price: 80,
           duration_minutes: 60,
-          is_active: true
-        },
-        {
-          tenant_id: tenantId,
-          name: 'Lavagem Detalhada & Plásticos',
-          vehicle_type: 'CARRO',
-          price: 160,
-          duration_minutes: 90,
-          is_active: true
-        },
-        {
-          tenant_id: tenantId,
-          name: 'Higienização Interna Completa',
-          vehicle_type: 'CARRO',
-          price: 280,
-          duration_minutes: 180,
           is_active: true
         }
       ];

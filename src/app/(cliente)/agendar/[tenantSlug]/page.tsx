@@ -170,87 +170,92 @@ export default function BookingPage({ params }: { params: Promise<{ tenantSlug: 
     async function loadData() {
       try {
         setLoadingData(true);
-        const { data: tenantData } = await supabase
+        let { data: tenantData } = await supabase
           .rpc('get_public_tenant_by_slug', { p_slug: tenantSlug })
           .maybeSingle() as { data: PublicTenant | null; error: unknown };
         
         if (!tenantData) {
-          console.warn("Lava-rápido não cadastrado. Usando serviços padrão de teste.");
+          // Fallback para buscar tenant pelo slug brilho-magico ou ativo
+          const { data: directTenant } = await supabase
+            .from('tenants')
+            .select('id, name, slug, logo_url, address')
+            .or(`slug.eq.${tenantSlug},slug.eq.brilho-magico,name.eq.Brilho Mágico`)
+            .limit(1)
+            .maybeSingle();
+
+          if (directTenant) {
+            tenantData = directTenant as PublicTenant;
+          }
+        }
+
+        if (tenantData) {
+          setTenantInfo({
+            name: tenantData.name,
+            logo_url: tenantData.logo_url || '/logo.jpg',
+            address: tenantData.address || 'Avenida Florips Crispim, N 644 - Bairro Novo Panorama, Salinas MG'
+          });
+
+          // Busca todos os serviços ativos da empresa diretamente do Supabase
+          const { data: servicesData } = await supabase
+            .from('services')
+            .select('*')
+            .eq('tenant_id', tenantData.id)
+            .eq('is_active', true)
+            .order('price', { ascending: true });
+
+          if (servicesData && servicesData.length > 0) {
+            setServices(servicesData.map(s => ({
+              id: s.id,
+              name: s.name,
+              price: Number(s.price),
+              duration: s.duration_minutes || 45,
+              vehicleType: s.vehicle_type as 'CARRO' | 'MOTO'
+            })));
+          }
+
+          // Busca agendamentos dos próximos 7 dias para mapear horários bloqueados
+          const todayStr = new Date().toISOString().split('T')[0];
+          const nextWeek = new Date();
+          nextWeek.setDate(nextWeek.getDate() + 7);
+          const nextWeekStr = nextWeek.toISOString().split('T')[0];
+
+          const { data: appointmentsData } = await supabase
+            .from('appointments')
+            .select('scheduled_at')
+            .eq('tenant_id', tenantData.id)
+            .gte('scheduled_at', todayStr)
+            .lte('scheduled_at', nextWeekStr);
+
+          if (appointmentsData) {
+            const booked: { [key: string]: string[] } = {};
+            appointmentsData.forEach((app) => {
+              const dateObj = new Date(app.scheduled_at);
+              const yyyy = dateObj.getFullYear();
+              const mm = String(dateObj.getMonth() + 1).padStart(2, '0');
+              const dd = String(dateObj.getDate()).padStart(2, '0');
+              const dateKey = `${yyyy}-${mm}-${dd}`;
+              
+              const hh = String(dateObj.getHours()).padStart(2, '0');
+              const min = String(dateObj.getMinutes()).padStart(2, '0');
+              const timeKey = `${hh}:${min}`;
+
+              if (!booked[dateKey]) {
+                booked[dateKey] = [];
+              }
+              booked[dateKey].push(timeKey);
+            });
+            setBookedSlots(booked);
+          }
+        } else {
           setTenantInfo({
             name: 'Brilho Mágico',
             logo_url: '/logo.jpg',
             address: 'Avenida Florips Crispim, N 644 - Bairro Novo Panorama, Salinas MG'
           });
-          setServices([
-            { id: '1', name: 'Limpeza Interna', price: 70.00, duration: 50, vehicleType: 'CARRO' },
-            { id: '2', name: 'Lavada Top', price: 150.00, duration: 90, vehicleType: 'CARRO' },
-            { id: '3', name: 'Lavada Mais Complexa', price: 300.00, duration: 150, vehicleType: 'CARRO' },
-            { id: '4', name: 'Ducha Simples Moto', price: 30.00, duration: 30, vehicleType: 'MOTO' },
-            { id: '5', name: 'Lavagem Completa Moto', price: 50.00, duration: 50, vehicleType: 'MOTO' },
-          ]);
-          setLoadingData(false);
-          return;
-        }
-
-        setTenantInfo({
-          name: tenantData.name,
-          logo_url: tenantData.logo_url || '/logo.jpg',
-          address: tenantData.address || 'Avenida Florips Crispim, N 644 - Bairro Novo Panorama, Salinas MG'
-        });
-
-        // Busca todos os serviços ativos da empresa diretamente do Supabase
-        const { data: servicesData } = await supabase
-          .from('services')
-          .select('*')
-          .eq('tenant_id', tenantData.id)
-          .eq('is_active', true)
-          .order('price', { ascending: true });
-
-        if (servicesData && servicesData.length > 0) {
-          setServices(servicesData.map(s => ({
-            id: s.id,
-            name: s.name,
-            price: Number(s.price),
-            duration: s.duration_minutes,
-            vehicleType: s.vehicle_type as 'CARRO' | 'MOTO'
-          })));
-        }
-
-        // Busca agendamentos dos próximos 7 dias para mapear horários bloqueados
-        const todayStr = new Date().toISOString().split('T')[0];
-        const nextWeek = new Date();
-        nextWeek.setDate(nextWeek.getDate() + 7);
-        const nextWeekStr = nextWeek.toISOString().split('T')[0];
-
-        const { data: appointmentsData } = await supabase
-          .from('appointments')
-          .select('scheduled_at')
-          .eq('tenant_id', tenantData.id)
-          .gte('scheduled_at', todayStr)
-          .lte('scheduled_at', nextWeekStr);
-
-        if (appointmentsData) {
-          const booked: { [key: string]: string[] } = {};
-          appointmentsData.forEach((app) => {
-            const dateObj = new Date(app.scheduled_at);
-            const yyyy = dateObj.getFullYear();
-            const mm = String(dateObj.getMonth() + 1).padStart(2, '0');
-            const dd = String(dateObj.getDate()).padStart(2, '0');
-            const dateKey = `${yyyy}-${mm}-${dd}`;
-            
-            const hh = String(dateObj.getHours()).padStart(2, '0');
-            const min = String(dateObj.getMinutes()).padStart(2, '0');
-            const timeKey = `${hh}:${min}`;
-
-            if (!booked[dateKey]) {
-              booked[dateKey] = [];
-            }
-            booked[dateKey].push(timeKey);
-          });
-          setBookedSlots(booked);
+          setServices([]);
         }
       } catch (err) {
-        console.error("Erro ao carregar banco de dados:", err);
+        console.error("Erro ao carregar dados do Supabase:", err);
       } finally {
         setLoadingData(false);
       }
@@ -851,9 +856,14 @@ export default function BookingPage({ params }: { params: Promise<{ tenantSlug: 
                   <div className="space-y-3">
                     {filteredServices.map((service) => {
                       const lower = service.name.toLowerCase();
-                      const isComplexa = lower.includes('complexa');
-                      const isTop = lower.includes('top');
-                      const isInterna = lower.includes('interna') || lower.includes('limpeza');
+                      const isHigienizacao = lower.includes('higienização') || lower.includes('higienizacao');
+                      const isRevitalizacao = lower.includes('revitalização') || lower.includes('revitalizacao');
+                      const isCera = lower.includes('cera');
+                      const isDetmol = lower.includes('detmol');
+                      const isMotor = lower.includes('motor');
+                      const isPorBaixo = lower.includes('baixo');
+                      const isBasica = lower.includes('básica') || lower.includes('basica');
+                      const isVerniz = lower.includes('verniz');
 
                       return (
                         <div
@@ -869,90 +879,152 @@ export default function BookingPage({ params }: { params: Promise<{ tenantSlug: 
                             <div className="flex-1">
                               <div className="flex items-center gap-2 flex-wrap">
                                 <h3 className="font-bold text-sm text-white">{service.name}</h3>
-                                {isComplexa && (
+                                {isHigienizacao && (
                                   <span className="text-[10px] font-black px-2 py-0.5 rounded-full bg-purple-500/15 text-purple-400 border border-purple-500/30">
-                                    ✨ Completa Premium
+                                    ✨ Higienização Especial
                                   </span>
                                 )}
-                                {isTop && (
+                                {isRevitalizacao && (
+                                  <span className="text-[10px] font-black px-2 py-0.5 rounded-full bg-cyan-500/15 text-cyan-400 border border-cyan-500/30">
+                                    💎 Revitalização & Brilho
+                                  </span>
+                                )}
+                                {isCera && (
                                   <span className="text-[10px] font-black px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-400 border border-amber-500/30">
-                                    ⭐ Mais Popular
+                                    🛡️ Proteção com Cera
                                   </span>
                                 )}
-                                {isInterna && (
+                                {isDetmol && (
+                                  <span className="text-[10px] font-black px-2 py-0.5 rounded-full bg-orange-500/15 text-orange-400 border border-orange-500/30">
+                                    🧪 Desengraxe com Detmol
+                                  </span>
+                                )}
+                                {isMotor && (
+                                  <span className="text-[10px] font-black px-2 py-0.5 rounded-full bg-red-500/15 text-red-400 border border-red-500/30">
+                                    ⚙️ Limpeza Técnica
+                                  </span>
+                                )}
+                                {isPorBaixo && (
                                   <span className="text-[10px] font-black px-2 py-0.5 rounded-full bg-blue-500/15 text-blue-400 border border-blue-500/30">
-                                    🚗 Essencial
+                                    🚿 Lavagem de Chassi
+                                  </span>
+                                )}
+                                {isBasica && (
+                                  <span className="text-[10px] font-black px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
+                                    ⭐ Essencial
                                   </span>
                                 )}
                               </div>
 
-                              {/* Lista de Itens Inclusos */}
-                              {isInterna && (
-                                <ul className="mt-2 space-y-1 text-xs text-neutral-400">
-                                  <li className="flex items-center gap-1.5">
-                                    <span className="text-green-500 font-bold">✓</span> Aspiração interna e porta-malas
-                                  </li>
-                                  <li className="flex items-center gap-1.5">
-                                    <span className="text-green-500 font-bold">✓</span> Lavagem pintura e caixa de rodas
-                                  </li>
-                                  <li className="flex items-center gap-1.5">
-                                    <span className="text-green-500 font-bold">✓</span> Limpeza básica de vidros
-                                  </li>
-                                </ul>
-                              )}
-
-                              {isTop && (
-                                <ul className="mt-2 space-y-1 text-xs text-neutral-400">
-                                  <li className="flex items-center gap-1.5">
-                                    <span className="text-green-500 font-bold">✓</span> Lavagem básica
-                                  </li>
-                                  <li className="flex items-center gap-1.5">
-                                    <span className="text-green-500 font-bold">✓</span> Revitalização de plástico interna/externa
-                                  </li>
-                                  <li className="flex items-center gap-1.5">
-                                    <span className="text-green-500 font-bold">✓</span> Aplicação de verniz nas caixas de roda
-                                  </li>
-                                  <li className="flex items-center gap-1.5">
-                                    <span className="text-green-500 font-bold">✓</span> Aplicação de cera pintura
-                                  </li>
-                                </ul>
-                              )}
-
-                              {isComplexa && (
-                                <ul className="mt-2 space-y-1 text-xs text-neutral-400">
-                                  <li className="flex items-center gap-1.5">
-                                    <span className="text-green-500 font-bold">✓</span> Todos os itens da <strong>Lavada Top</strong>
-                                  </li>
-                                  <li className="flex items-center gap-1.5">
-                                    <span className="text-green-500 font-bold">✓</span> Lavagem por baixo
-                                  </li>
-                                  <li className="flex items-center gap-1.5">
-                                    <span className="text-green-500 font-bold">✓</span> Lavagem de motor
-                                  </li>
-                                  <li className="flex items-center gap-1.5">
-                                    <span className="text-green-500 font-bold">✓</span> Escovar bancos sem remoção
-                                  </li>
-                                  <li className="flex items-center gap-1.5">
-                                    <span className="text-green-500 font-bold">✓</span> Escovar carpete sem remoção
-                                  </li>
-                                </ul>
-                              )}
+                              {/* Destaques do Serviço */}
+                              <ul className="mt-2 space-y-1 text-xs text-neutral-400">
+                                {lower.includes('remoção de bancos, carpete e teto') && (
+                                  <>
+                                    <li className="flex items-center gap-1.5">
+                                      <span className="text-green-500 font-bold">✓</span> Remoção completa de bancos, carpete e higienização do teto
+                                    </li>
+                                    <li className="flex items-center gap-1.5">
+                                      <span className="text-green-500 font-bold">✓</span> Extração profunda e secagem técnica
+                                    </li>
+                                  </>
+                                )}
+                                {lower.includes('sem remoção de bancos') && (
+                                  <>
+                                    <li className="flex items-center gap-1.5">
+                                      <span className="text-green-500 font-bold">✓</span> Higienização detalhada dos bancos no próprio veículo
+                                    </li>
+                                    <li className="flex items-center gap-1.5">
+                                      <span className="text-green-500 font-bold">✓</span> Limpeza de portas, painel e aspiração completa
+                                    </li>
+                                  </>
+                                )}
+                                {lower === 'lavagem com cera + revitalização de plásticos' && (
+                                  <>
+                                    <li className="flex items-center gap-1.5">
+                                      <span className="text-green-500 font-bold">✓</span> Lavagem completa com cera protetora
+                                    </li>
+                                    <li className="flex items-center gap-1.5">
+                                      <span className="text-green-500 font-bold">✓</span> Revitalização de plásticos e borrachas
+                                    </li>
+                                  </>
+                                )}
+                                {lower === 'lavagem com cera' && (
+                                  <>
+                                    <li className="flex items-center gap-1.5">
+                                      <span className="text-green-500 font-bold">✓</span> Lavagem detalhada da carroceria
+                                    </li>
+                                    <li className="flex items-center gap-1.5">
+                                      <span className="text-green-500 font-bold">✓</span> Aplicação de cera com alto poder de brilho e proteção
+                                    </li>
+                                  </>
+                                )}
+                                {lower === 'lavagem com revitalização de plásticos' && (
+                                  <>
+                                    <li className="flex items-center gap-1.5">
+                                      <span className="text-green-500 font-bold">✓</span> Lavagem completa da pintura
+                                    </li>
+                                    <li className="flex items-center gap-1.5">
+                                      <span className="text-green-500 font-bold">✓</span> Tratamento restaurador de plásticos externos e internos
+                                    </li>
+                                  </>
+                                )}
+                                {lower === 'lavagem de motor' && (
+                                  <>
+                                    <li className="flex items-center gap-1.5">
+                                      <span className="text-green-500 font-bold">✓</span> Limpeza técnica com proteção de partes elétricas sensíveis
+                                    </li>
+                                    <li className="flex items-center gap-1.5">
+                                      <span className="text-green-500 font-bold">✓</span> Acabamento e verniz de motor protetor
+                                    </li>
+                                  </>
+                                )}
+                                {lower === 'lavagem por baixo' && (
+                                  <>
+                                    <li className="flex items-center gap-1.5">
+                                      <span className="text-green-500 font-bold">✓</span> Lavagem completa de chassi e caixa de rodas
+                                    </li>
+                                    <li className="flex items-center gap-1.5">
+                                      <span className="text-green-500 font-bold">✓</span> Remoção de terra, graxa e resíduos acumulados
+                                    </li>
+                                  </>
+                                )}
+                                {lower === 'lavagem básica' && service.vehicleType === 'CARRO' && (
+                                  <>
+                                    <li className="flex items-center gap-1.5">
+                                      <span className="text-green-500 font-bold">✓</span> Lavagem externa da pintura e caixas de roda
+                                    </li>
+                                    <li className="flex items-center gap-1.5">
+                                      <span className="text-green-500 font-bold">✓</span> Aspiração interna e limpeza dos vidros
+                                    </li>
+                                  </>
+                                )}
+                                {service.vehicleType === 'MOTO' && (
+                                  <>
+                                    <li className="flex items-center gap-1.5">
+                                      <span className="text-green-500 font-bold">✓</span> {isDetmol ? 'Desengraxe com Detmol + ' : ''}Limpeza detalhada
+                                    </li>
+                                    {isVerniz && (
+                                      <li className="flex items-center gap-1.5">
+                                        <span className="text-green-500 font-bold">✓</span> Acabamento protetor com verniz
+                                      </li>
+                                    )}
+                                  </>
+                                )}
+                              </ul>
 
                               <div className="mt-2.5 flex items-center gap-3 text-[11px] text-neutral-500 flex-wrap">
                                 <span className="flex items-center gap-1">
                                   <Clock size={12} />
                                   ~{service.duration} min
                                 </span>
-                                {(isInterna || isTop || isComplexa) && (
-                                  <span className="text-amber-400/90 font-medium">
-                                    * Obs: depende do estado do veículo
-                                  </span>
-                                )}
+                                <span className="text-amber-400/90 font-medium">
+                                  * Obs: tempo estimado
+                                </span>
                               </div>
                             </div>
 
                             <div className="text-right shrink-0">
-                              <span className="text-[10px] text-neutral-400 block font-semibold">A partir de</span>
+                              <span className="text-[10px] text-neutral-400 block font-semibold">Valor</span>
                               <span className="font-black text-base text-green-400">
                                 R$ {service.price.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
                               </span>
