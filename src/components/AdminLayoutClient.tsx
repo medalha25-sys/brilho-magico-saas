@@ -308,71 +308,14 @@ export default function AdminLayoutClient({
                     </div>
                   </div>
 
-                  {/* Seção: Trocar de Usuário */}
+                  {/* Seção: Trocar de Conta */}
                   <div className="p-3 border-b border-gray-100 dark:border-gray-800 space-y-1">
-                    <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block px-2 mb-1.5">
-                      Trocar de Usuário
-                    </span>
-
-                    {/* Alternar para Claudio Junior */}
-                    <button
-                      type="button"
-                      onClick={() => handleOpenSwitchModal('claudio2017hnd@gmail.com')}
-                      className={`w-full flex items-center justify-between p-2 rounded-xl text-left transition-colors text-xs ${
-                        userName.toLowerCase().includes('claudio')
-                          ? 'bg-blue-50/70 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 font-bold'
-                          : 'hover:bg-gray-100 dark:hover:bg-gray-900 text-gray-700 dark:text-gray-300'
-                      }`}
-                    >
-                      <div className="flex items-center gap-2.5">
-                        <div className="w-6 h-6 rounded-full bg-blue-600 text-white font-bold text-[11px] flex items-center justify-center">
-                          C
-                        </div>
-                        <div>
-                          <p className="font-semibold">Claudio Junior</p>
-                          <p className="text-[10px] text-gray-400">Admin</p>
-                        </div>
-                      </div>
-                      {userName.toLowerCase().includes('claudio') ? (
-                        <UserCheck size={14} className="text-blue-600" />
-                      ) : (
-                        <span className="text-[10px] text-blue-600 dark:text-blue-400 font-semibold">Acessar</span>
-                      )}
-                    </button>
-
-                    {/* Alternar para Monaliza Rodrigues */}
-                    <button
-                      type="button"
-                      onClick={() => handleOpenSwitchModal('monalizarodrigueshnd@gmail.com')}
-                      className={`w-full flex items-center justify-between p-2 rounded-xl text-left transition-colors text-xs ${
-                        userName.toLowerCase().includes('monaliza')
-                          ? 'bg-blue-50/70 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 font-bold'
-                          : 'hover:bg-gray-100 dark:hover:bg-gray-900 text-gray-700 dark:text-gray-300'
-                      }`}
-                    >
-                      <div className="flex items-center gap-2.5">
-                        <div className="w-6 h-6 rounded-full bg-pink-600 text-white font-bold text-[11px] flex items-center justify-center">
-                          M
-                        </div>
-                        <div>
-                          <p className="font-semibold">Monaliza Rodrigues</p>
-                          <p className="text-[10px] text-gray-400">Gerente</p>
-                        </div>
-                      </div>
-                      {userName.toLowerCase().includes('monaliza') ? (
-                        <UserCheck size={14} className="text-blue-600" />
-                      ) : (
-                        <span className="text-[10px] text-pink-600 dark:text-pink-400 font-semibold">Acessar</span>
-                      )}
-                    </button>
-
-                    {/* Botão para entrar com outra conta */}
                     <button
                       type="button"
                       onClick={() => handleOpenSwitchModal('')}
-                      className="w-full flex items-center gap-2 p-2 rounded-xl text-left hover:bg-gray-100 dark:hover:bg-gray-900 text-gray-600 dark:text-gray-400 text-xs transition-colors"
+                      className="w-full flex items-center gap-2 p-2 rounded-xl text-left hover:bg-gray-100 dark:hover:bg-gray-900 text-gray-700 dark:text-gray-300 text-xs transition-colors font-medium"
                     >
-                      <UserPlus size={14} />
+                      <UserPlus size={14} className="text-blue-600 dark:text-blue-400" />
                       <span>Entrar com outra conta...</span>
                     </button>
                   </div>

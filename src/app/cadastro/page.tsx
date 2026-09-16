@@ -80,11 +80,9 @@ export default function CadastroTrialPage() {
     try {
       setLoading(true);
 
-      // 1. Verifica se o slug já está em uso
+      // 1. Verifica se o slug já está em uso via RPC pública segura (anti-enumeração)
       const { data: existingTenant } = await supabase
-        .from('tenants')
-        .select('id')
-        .eq('slug', slug)
+        .rpc('get_public_tenant_by_slug', { p_slug: slug.trim().toLowerCase() })
         .maybeSingle();
 
       if (existingTenant) {
@@ -132,11 +130,11 @@ export default function CadastroTrialPage() {
           address: cityState.trim() || undefined,
           owner_id: userId
         })
-        .select()
+        .select('id, name, slug')
         .single();
 
-      if (tenantError || !tenantData) {
-        setError("Erro ao cadastrar a empresa: " + (tenantError?.message || "Tente novamente."));
+      if (tenantError || !tenantData || !tenantData.id) {
+        setError("Erro ao cadastrar a empresa: " + (tenantError?.message || "Identificador da empresa não retornado. Tente novamente."));
         setLoading(false);
         return;
       }
@@ -144,7 +142,7 @@ export default function CadastroTrialPage() {
       const tenantId = tenantData.id;
 
       // 4. Cria/Atualiza o Profile do usuário como ADMIN da nova empresa
-      await supabase
+      const { error: profileError } = await supabase
         .from('profiles')
         .upsert({
           id: userId,
@@ -152,6 +150,10 @@ export default function CadastroTrialPage() {
           role: 'ADMIN',
           tenant_id: tenantId
         });
+
+      if (profileError) {
+        console.warn("Aviso ao atualizar perfil:", profileError.message);
+      }
 
       // 5. Cadastra Serviços Padrão de Boas-Vindas
       const defaultServices = [
@@ -196,10 +198,16 @@ export default function CadastroTrialPage() {
       }
 
       // 6. Faz login e redireciona para o Dashboard
-      await supabase.auth.signInWithPassword({
+      const { error: signInError } = await supabase.auth.signInWithPassword({
         email: email.trim().toLowerCase(),
         password: password
       });
+
+      if (signInError) {
+        setError("Conta criada com sucesso, mas ocorreu um erro no login automático: " + signInError.message + ". Por favor, acesse a tela de login.");
+        setLoading(false);
+        return;
+      }
 
       setSuccess(true);
 

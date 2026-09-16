@@ -37,6 +37,14 @@ interface Service {
   vehicleType: 'CARRO' | 'MOTO';
 }
 
+interface PublicTenant {
+  id: string;
+  name: string;
+  slug: string;
+  logo_url: string | null;
+  address: string | null;
+}
+
 const TIME_SLOTS_MOCK = ['08:00', '09:30', '11:00', '13:30', '15:00', '16:30'];
 
 // Gerador oficial de código Pix Copia e Cola (Padrão Banco Central BR Code EMV com CRC16)
@@ -128,6 +136,7 @@ export default function BookingPage({ params }: { params: Promise<{ tenantSlug: 
   const [loading, setLoading] = useState(false);
   const [copied, setCopied] = useState(false);
   const [customerPoints, setCustomerPoints] = useState<number>(0);
+  const [showScrollHint, setShowScrollHint] = useState(false);
 
   // Modal de Consulta de Pontos
   const [isCheckPointsOpen, setIsCheckPointsOpen] = useState(false);
@@ -162,10 +171,8 @@ export default function BookingPage({ params }: { params: Promise<{ tenantSlug: 
       try {
         setLoadingData(true);
         const { data: tenantData } = await supabase
-          .from('tenants')
-          .select('id, name, logo_url, address')
-          .eq('slug', tenantSlug)
-          .single();
+          .rpc('get_public_tenant_by_slug', { p_slug: tenantSlug })
+          .maybeSingle() as { data: PublicTenant | null; error: unknown };
         
         if (!tenantData) {
           console.warn("Lava-rápido não cadastrado. Usando serviços padrão de teste.");
@@ -191,10 +198,11 @@ export default function BookingPage({ params }: { params: Promise<{ tenantSlug: 
           address: tenantData.address || 'Avenida Florips Crispim, N 644 - Bairro Novo Panorama, Salinas MG'
         });
 
-        // Busca todos os serviços ativos diretamente do Supabase
+        // Busca todos os serviços ativos da empresa diretamente do Supabase
         const { data: servicesData } = await supabase
           .from('services')
           .select('*')
+          .eq('tenant_id', tenantData.id)
           .eq('is_active', true)
           .order('price', { ascending: true });
 
@@ -250,6 +258,40 @@ export default function BookingPage({ params }: { params: Promise<{ tenantSlug: 
 
     loadData();
   }, [tenantSlug]);
+
+  // 1. Reset Automático e Instantâneo de Scroll no Topo a cada mudança de etapa
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      window.scrollTo({
+        top: 0,
+        behavior: 'auto'
+      });
+    }
+  }, [step]);
+
+  // 2. Orientação Visual Discreta de Rolagem (Gesto / Swipe) no Passo 1
+  useEffect(() => {
+    if (step === 1 && vehicleType && !selectedService) {
+      setShowScrollHint(true);
+      const timer = setTimeout(() => {
+        setShowScrollHint(false);
+      }, 4500);
+
+      const handleScroll = () => {
+        if (window.scrollY > 30) {
+          setShowScrollHint(false);
+        }
+      };
+
+      window.addEventListener('scroll', handleScroll, { passive: true });
+      return () => {
+        clearTimeout(timer);
+        window.removeEventListener('scroll', handleScroll);
+      };
+    } else {
+      setShowScrollHint(false);
+    }
+  }, [step, vehicleType, selectedService]);
 
   // Helpers de Compartilhamento
   const getShareUrl = () => {
@@ -377,10 +419,8 @@ export default function BookingPage({ params }: { params: Promise<{ tenantSlug: 
 
     try {
       const { data: tenantData } = await supabase
-        .from('tenants')
-        .select('id')
-        .eq('slug', tenantSlug)
-        .single();
+        .rpc('get_public_tenant_by_slug', { p_slug: tenantSlug })
+        .maybeSingle() as { data: PublicTenant | null; error: unknown };
 
       const payload = {
         tenant_id: tenantData?.id || null,
@@ -448,10 +488,8 @@ export default function BookingPage({ params }: { params: Promise<{ tenantSlug: 
     if (cleanPhone.length >= 10) {
       try {
         const { data: tenantData } = await supabase
-          .from('tenants')
-          .select('id')
-          .eq('slug', tenantSlug)
-          .single();
+          .rpc('get_public_tenant_by_slug', { p_slug: tenantSlug })
+          .maybeSingle() as { data: PublicTenant | null; error: unknown };
 
         if (tenantData?.id) {
           const { data: customerList } = await supabase
@@ -555,10 +593,8 @@ export default function BookingPage({ params }: { params: Promise<{ tenantSlug: 
 
     try {
       const { data: tenantData } = await supabase
-        .from('tenants')
-        .select('id')
-        .eq('slug', tenantSlug)
-        .single();
+        .rpc('get_public_tenant_by_slug', { p_slug: tenantSlug })
+        .maybeSingle() as { data: PublicTenant | null; error: unknown };
 
       if (!tenantData) {
         console.warn("Lava-rápido não encontrado.");
@@ -609,24 +645,20 @@ export default function BookingPage({ params }: { params: Promise<{ tenantSlug: 
       const [hour, minute] = selectedTime.split(':').map(Number);
       const scheduledAt = new Date(year, month - 1, day, hour, minute).toISOString();
 
-      // 3. Salva na tabela appointments com forma de pagamento
+      // 3. Salva via RPC homologada create_public_appointment
       const paymentInfo = getPaymentMethodLabel();
-      const { error: insertError } = await supabase
-        .from('appointments')
-        .insert({
-          tenant_id: tenantData.id,
-          service_id: selectedService.id,
-          customer_name: customerName,
-          customer_phone: cleanPhone,
-          vehicle_plate: cleanPlate,
-          customer_cpf: cleanCpf,
-          scheduled_at: scheduledAt,
-          total_price: selectedService.price,
-          status: 'PENDENTE'
-        });
+      const { data: rpcResult, error: rpcError } = await supabase.rpc('create_public_appointment', {
+        p_slug: tenantSlug,
+        p_service_id: selectedService.id,
+        p_customer_name: customerName.trim(),
+        p_customer_phone: cleanPhone,
+        p_customer_cpf: cleanCpf || null,
+        p_vehicle_plate: cleanPlate || null,
+        p_scheduled_at: scheduledAt
+      });
 
-      if (insertError) {
-        alert("Erro ao salvar agendamento: " + insertError.message);
+      if (rpcError) {
+        alert("Erro ao realizar agendamento: " + (rpcError.message || "Tente novamente."));
         setLoading(false);
         return;
       }
@@ -965,6 +997,16 @@ export default function BookingPage({ params }: { params: Promise<{ tenantSlug: 
                 <span>⭐ Avaliar Atendimento & Deixar Feedback</span>
               </button>
             </div>
+
+            {/* Orientação Visual Discreta de Rolagem (Gesto / Swipe) */}
+            {showScrollHint && (
+              <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-40 pointer-events-none animate-in fade-in slide-in-from-bottom-2 duration-300 max-w-[90vw]">
+                <div className="flex items-center gap-2 px-3.5 py-2 rounded-full bg-neutral-900/95 border border-neutral-700/90 text-neutral-200 text-xs font-semibold shadow-2xl backdrop-blur-md">
+                  <span className="text-sm animate-bounce inline-block">👆</span>
+                  <span className="truncate">Deslize para cima para ver os serviços</span>
+                </div>
+              </div>
+            )}
           </div>
         )}
 

@@ -121,13 +121,16 @@ export default function ServicosPage() {
       return;
     }
 
-    const activeTenantId = tenantId || 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11';
+    if (!tenantId) {
+      setModalError("Identificador da organização não encontrado. Por favor, recarregue a página.");
+      return;
+    }
 
     setSubmitting(true);
     setModalError(null);
 
     const serviceData = {
-      tenant_id: activeTenantId,
+      tenant_id: tenantId,
       name: name.trim(),
       vehicle_type: vehicleType,
       price: parseFloat(price),

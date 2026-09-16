@@ -74,35 +74,6 @@ export const EXPENSE_CATEGORIES = {
   OUTROS: { label: 'Outras Despesas', icon: '📦', color: 'text-gray-600 dark:text-gray-400 bg-gray-50 dark:bg-gray-900 border-gray-500/20' },
 };
 
-const DEFAULT_EXPENSES_SEED: ExpenseItem[] = [
-  {
-    id: 'exp-1',
-    description: 'Galão 5L Shampoo Automotivo Neutro V-Floc Vonixx',
-    category: 'PRODUTOS',
-    amount: 149.90,
-    payment_method: 'PIX',
-    expense_date: new Date().toISOString().split('T')[0],
-    notes: 'Insumo para lavagens'
-  },
-  {
-    id: 'exp-2',
-    description: 'Conta de Água COPASA / SAAE',
-    category: 'ESTRUTURA',
-    amount: 280.00,
-    payment_method: 'BOLETO',
-    expense_date: new Date().toISOString().split('T')[0],
-    notes: 'Consumo mensal de água'
-  },
-  {
-    id: 'exp-3',
-    description: 'Pretinho Pneus Concentrado 5L + 10 Panos Microfibra',
-    category: 'PRODUTOS',
-    amount: 110.00,
-    payment_method: 'CARTAO_CREDITO',
-    expense_date: new Date().toISOString().split('T')[0],
-    notes: 'Finalização e acabamento'
-  }
-];
 
 export default function FinanceiroPage() {
   const supabase = createClient();
@@ -192,21 +163,50 @@ export default function FinanceiroPage() {
           if (!expErr && dbExpenses && dbExpenses.length > 0) {
             setExpenses(dbExpenses as ExpenseItem[]);
           } else {
-            // Fallback localStorage
+            // Fallback localStorage (expurgando sementes fictícias prévias)
             const localSaved = localStorage.getItem(`brilho_magico_expenses_${tId}`);
             if (localSaved) {
-              setExpenses(JSON.parse(localSaved));
+              try {
+                const parsed = JSON.parse(localSaved);
+                const cleanExpenses = Array.isArray(parsed)
+                  ? parsed.filter((item: any) => 
+                      item && 
+                      !['exp-1', 'exp-2', 'exp-3'].includes(item.id) &&
+                      !item.description?.includes('Shampoo Automotivo Neutro V-Floc') &&
+                      !item.description?.includes('Conta de Água COPASA') &&
+                      !item.description?.includes('Pretinho Pneus Concentrado')
+                    )
+                  : [];
+                setExpenses(cleanExpenses);
+                localStorage.setItem(`brilho_magico_expenses_${tId}`, JSON.stringify(cleanExpenses));
+              } catch {
+                setExpenses([]);
+                localStorage.removeItem(`brilho_magico_expenses_${tId}`);
+              }
             } else {
-              setExpenses(DEFAULT_EXPENSES_SEED);
-              localStorage.setItem(`brilho_magico_expenses_${tId}`, JSON.stringify(DEFAULT_EXPENSES_SEED));
+              setExpenses([]);
             }
           }
         } catch {
           const localSaved = localStorage.getItem(`brilho_magico_expenses_${tId}`);
           if (localSaved) {
-            setExpenses(JSON.parse(localSaved));
+            try {
+              const parsed = JSON.parse(localSaved);
+              const cleanExpenses = Array.isArray(parsed)
+                ? parsed.filter((item: any) => 
+                    item && 
+                    !['exp-1', 'exp-2', 'exp-3'].includes(item.id) &&
+                    !item.description?.includes('Shampoo Automotivo Neutro V-Floc') &&
+                    !item.description?.includes('Conta de Água COPASA') &&
+                    !item.description?.includes('Pretinho Pneus Concentrado')
+                  )
+                : [];
+              setExpenses(cleanExpenses);
+            } catch {
+              setExpenses([]);
+            }
           } else {
-            setExpenses(DEFAULT_EXPENSES_SEED);
+            setExpenses([]);
           }
         }
       }
@@ -231,6 +231,11 @@ export default function FinanceiroPage() {
       return;
     }
 
+    if (!tenantId) {
+      alert("Identificador da organização não encontrado. Por favor, recarregue a página.");
+      return;
+    }
+
     const numericAmount = parseFloat(String(expAmount).replace(',', '.'));
     if (isNaN(numericAmount) || numericAmount <= 0) {
       alert("Informe um valor válido maior que zero.");
@@ -239,7 +244,7 @@ export default function FinanceiroPage() {
 
     const newExp: ExpenseItem = {
       id: 'exp_' + Date.now(),
-      tenant_id: tenantId || 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11',
+      tenant_id: tenantId,
       description: expDescription.trim(),
       category: expCategory,
       amount: numericAmount,
