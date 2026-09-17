@@ -1,8 +1,9 @@
-"use client";
+﻿"use client";
 
 import React, { useEffect, useState } from 'react';
 import { createClient } from '@/utils/supabase/client';
-import { Plus, Trash2, Edit2, Check, X, ShieldAlert, Sparkles, Clock, Car } from 'lucide-react';
+import { Plus, Trash2, Edit2, ShieldAlert, Sparkles, Clock, Car } from 'lucide-react';
+import { DurationUnit, durationToMinutes, minutesToDuration, formatDurationDisplay } from '@/utils/duration';
 
 interface Service {
   id: string;
@@ -25,7 +26,8 @@ export default function ServicosPage() {
   const [name, setName] = useState('');
   const [vehicleType, setVehicleType] = useState<'CARRO' | 'MOTO'>('CARRO');
   const [price, setPrice] = useState('');
-  const [duration, setDuration] = useState('');
+  const [durationValue, setDurationValue] = useState('30');
+  const [durationUnit, setDurationUnit] = useState<DurationUnit>('MINUTOS');
   const [isActive, setIsActive] = useState(true);
   const [modalError, setModalError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -95,7 +97,8 @@ export default function ServicosPage() {
     setName('');
     setVehicleType('CARRO');
     setPrice('');
-    setDuration('');
+    setDurationValue('30');
+    setDurationUnit('MINUTOS');
     setIsActive(true);
     setModalError(null);
     setIsOpen(true);
@@ -107,7 +110,10 @@ export default function ServicosPage() {
     setName(service.name);
     setVehicleType(service.vehicle_type);
     setPrice(String(service.price));
-    setDuration(String(service.duration_minutes));
+    // Converte os minutos armazenados para o par value+unit mais adequado
+    const { value, unit } = minutesToDuration(service.duration_minutes);
+    setDurationValue(String(value));
+    setDurationUnit(unit);
     setIsActive(service.is_active);
     setModalError(null);
     setIsOpen(true);
@@ -116,13 +122,26 @@ export default function ServicosPage() {
   // Salva no Supabase (cria ou atualiza)
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!name || !price || !duration) {
+
+    const parsedDurationValue = parseFloat(durationValue);
+    if (!name || !price) {
       setModalError("Por favor, preencha todos os campos obrigatórios.");
+      return;
+    }
+    if (isNaN(parsedDurationValue) || parsedDurationValue <= 0) {
+      setModalError("A duração deve ser um valor positivo maior que zero.");
       return;
     }
 
     if (!tenantId) {
       setModalError("Identificador da organização não encontrado. Por favor, recarregue a página.");
+      return;
+    }
+
+    // Converte para minutos para gravar no banco
+    const computedMinutes = durationToMinutes(parsedDurationValue, durationUnit);
+    if (computedMinutes <= 0) {
+      setModalError("A duração calculada deve ser maior que zero minutos.");
       return;
     }
 
@@ -134,7 +153,7 @@ export default function ServicosPage() {
       name: name.trim(),
       vehicle_type: vehicleType,
       price: parseFloat(price),
-      duration_minutes: parseInt(duration),
+      duration_minutes: computedMinutes,
       is_active: isActive
     };
 
@@ -149,7 +168,7 @@ export default function ServicosPage() {
         if (error) {
           setModalError(error.message);
         } else {
-          setServices(prev => prev.map(s => s.id === editId ? { ...s, ...serviceData, price: Number(price), duration_minutes: Number(duration) } : s));
+          setServices(prev => prev.map(s => s.id === editId ? { ...s, ...serviceData } : s));
           setIsOpen(false);
         }
       } else {
@@ -211,7 +230,6 @@ export default function ServicosPage() {
         .eq('id', id);
 
       if (error) {
-        // Se der erro de chave estrangeira, oferece desativar em vez de excluir
         if (error.code === '23503') {
           if (window.confirm("Este serviço possui agendamentos vinculados e não pode ser excluído definitivamente. Deseja apenas desativá-lo para que não apareça para novos clientes?")) {
             await toggleActive(id, true);
@@ -294,7 +312,10 @@ export default function ServicosPage() {
                 <h3 className="font-bold text-lg text-gray-900 dark:text-white mb-2 text-left">{service.name}</h3>
                 
                 <div className="flex items-center gap-4 text-xs text-gray-500 dark:text-gray-400 mb-6">
-                  <span className="flex items-center gap-1"><Clock size={14} /> {service.duration_minutes} min</span>
+                  <span className="flex items-center gap-1">
+                    <Clock size={14} />
+                    {formatDurationDisplay(service.duration_minutes, true)}
+                  </span>
                   <span className="font-semibold text-gray-900 dark:text-white text-sm">R$ {service.price.toFixed(2)}</span>
                 </div>
               </div>
@@ -333,7 +354,7 @@ export default function ServicosPage() {
                 onClick={() => setIsOpen(false)}
                 className="p-1 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-900 text-gray-500"
               >
-                <X size={18} />
+                ✕
               </button>
             </div>
 
@@ -387,33 +408,53 @@ export default function ServicosPage() {
                 </div>
               </div>
 
-              {/* Preço e Duração */}
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1.5">Preço (R$)</label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    min="0"
-                    required
-                    placeholder="Ex: 80.00"
-                    value={price}
-                    onChange={(e) => setPrice(e.target.value)}
-                    className="block w-full px-3 py-2 border border-gray-200 dark:border-gray-800 rounded-xl bg-white dark:bg-gray-900 text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1.5">Duração (Minutos)</label>
+              {/* Preço */}
+              <div>
+                <label className="block text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1.5">Preço (R$)</label>
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  required
+                  placeholder="Ex: 80.00"
+                  value={price}
+                  onChange={(e) => setPrice(e.target.value)}
+                  className="block w-full px-3 py-2 border border-gray-200 dark:border-gray-800 rounded-xl bg-white dark:bg-gray-900 text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
+                />
+              </div>
+
+              {/* Duração: [ valor ] [ unidade ▼ ] */}
+              <div>
+                <label className="block text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1.5">
+                  Duração
+                </label>
+                <div className="flex gap-2">
                   <input
                     type="number"
                     min="1"
+                    step="1"
                     required
-                    placeholder="Ex: 60"
-                    value={duration}
-                    onChange={(e) => setDuration(e.target.value)}
-                    className="block w-full px-3 py-2 border border-gray-200 dark:border-gray-800 rounded-xl bg-white dark:bg-gray-900 text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
+                    placeholder="Ex: 30"
+                    value={durationValue}
+                    onChange={(e) => setDurationValue(e.target.value)}
+                    className="flex-1 px-3 py-2 border border-gray-200 dark:border-gray-800 rounded-xl bg-white dark:bg-gray-900 text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
                   />
+                  <select
+                    value={durationUnit}
+                    onChange={(e) => setDurationUnit(e.target.value as DurationUnit)}
+                    className="px-3 py-2 border border-gray-200 dark:border-gray-800 rounded-xl bg-white dark:bg-gray-900 text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 cursor-pointer"
+                  >
+                    <option value="MINUTOS">Minutos</option>
+                    <option value="HORAS">Horas</option>
+                    <option value="DIAS">Dias</option>
+                  </select>
                 </div>
+                {/* Preview da conversão */}
+                {durationValue && parseFloat(durationValue) > 0 && (
+                  <p className="mt-1.5 text-[11px] text-gray-400 dark:text-gray-500">
+                    ≈ {durationToMinutes(parseFloat(durationValue), durationUnit)} minutos armazenados no banco
+                  </p>
+                )}
               </div>
 
               {/* Status Ativo Toggle */}

@@ -28,6 +28,7 @@ import {
   DollarSign
 } from 'lucide-react';
 import { createClient } from '@/utils/supabase/client';
+import { formatDurationDisplay } from '@/utils/duration';
 
 interface Service {
   id: string;
@@ -1015,7 +1016,7 @@ export default function BookingPage({ params }: { params: Promise<{ tenantSlug: 
                               <div className="mt-2.5 flex items-center gap-3 text-[11px] text-neutral-500 flex-wrap">
                                 <span className="flex items-center gap-1">
                                   <Clock size={12} />
-                                  ~{service.duration} min
+                                  ~{formatDurationDisplay(service.duration)}
                                 </span>
                                 <span className="text-amber-400/90 font-medium">
                                   * Obs: tempo estimado
@@ -1115,7 +1116,7 @@ export default function BookingPage({ params }: { params: Promise<{ tenantSlug: 
               <div>
                 <p className="text-[10px] text-green-500 font-semibold uppercase tracking-wider">Serviço Selecionado</p>
                 <p className="font-bold text-sm text-white mt-0.5">{selectedService?.name}</p>
-                <p className="text-xs text-neutral-500 mt-0.5">{selectedService?.duration} minutos de duração</p>
+                <p className="text-xs text-neutral-500 mt-0.5">{selectedService ? formatDurationDisplay(selectedService.duration, true) : ''} de duração</p>
               </div>
               <span className="font-bold text-base text-green-500">
                 R$ {selectedService?.price.toFixed(2)}
