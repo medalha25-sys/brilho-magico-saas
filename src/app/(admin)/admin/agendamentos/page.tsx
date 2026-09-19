@@ -124,9 +124,33 @@ export default function AgendamentosPage() {
   const loadAppointments = async () => {
     try {
       setLoading(true);
+
+      // 1. Busca o tenant_id do usuário logado
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        setLoading(false);
+        return;
+      }
+
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('tenant_id')
+        .eq('id', user.id)
+        .single();
+
+      if (!profile?.tenant_id) {
+        setLoading(false);
+        return;
+      }
+
+      const tId = profile.tenant_id;
+      setTenantId(tId);
+
+      // 2. Carrega agendamentos SOMENTE do tenant logado
       const { data, error } = await supabase
         .from('appointments')
         .select('*, services(name, price, duration_minutes)')
+        .eq('tenant_id', tId)
         .order('scheduled_at', { ascending: false });
 
       if (error) {
@@ -135,42 +159,27 @@ export default function AgendamentosPage() {
         setAppointments(data as unknown as Appointment[]);
       }
 
-      // Busca dados do usuário, tenant e serviços ativos
-      const { data: { user } } = await supabase.auth.getUser();
-      if (user) {
-        const { data: profile } = await supabase
-          .from('profiles')
-          .select('tenant_id')
-          .eq('id', user.id)
-          .single();
+      // 3. Busca dados da empresa
+      const { data: tenant } = await supabase
+        .from('tenants')
+        .select('name, phone, address, cnpj')
+        .eq('id', tId)
+        .single();
 
-        if (profile?.tenant_id) {
-          const tId = profile.tenant_id;
-          setTenantId(tId);
+      if (tenant) {
+        setTenantInfo(tenant);
+      }
 
-          // Busca dados da empresa
-          const { data: tenant } = await supabase
-            .from('tenants')
-            .select('name, phone, address, cnpj')
-            .eq('id', tId)
-            .single();
+      // 4. Busca serviços para o formulário de lançamento
+      const { data: servicesData } = await supabase
+        .from('services')
+        .select('*')
+        .eq('tenant_id', tId)
+        .eq('is_active', true)
+        .order('name', { ascending: true });
 
-          if (tenant) {
-            setTenantInfo(tenant);
-          }
-
-          // Busca serviços para o formulário de lançamento
-          const { data: servicesData } = await supabase
-            .from('services')
-            .select('*')
-            .eq('tenant_id', tId)
-            .eq('is_active', true)
-            .order('name', { ascending: true });
-
-          if (servicesData) {
-            setServices(servicesData);
-          }
-        }
+      if (servicesData) {
+        setServices(servicesData);
       }
     } catch (err) {
       console.error("Erro de rede:", err);

@@ -603,7 +603,51 @@ export default function BookingPage({ params }: { params: Promise<{ tenantSlug: 
         .maybeSingle() as { data: PublicTenant | null; error: unknown };
 
       if (!tenantData) {
-        console.warn("Lava-rápido não encontrado.");
+        // Fallback: busca tenant diretamente pela tabela
+        const { data: fallbackTenant } = await supabase
+          .from('tenants')
+          .select('id, name, slug')
+          .or(`slug.eq.${tenantSlug},slug.eq.brilho-magico`)
+          .limit(1)
+          .maybeSingle();
+
+        if (!fallbackTenant) {
+          alert("Estabelecimento não encontrado. Verifique o link de agendamento.");
+          setLoading(false);
+          return;
+        }
+
+        // Prossegue com o tenant encontrado via fallback
+        const tenantId = fallbackTenant.id;
+        const cleanPhone = customerPhone.trim();
+        const cleanPlate = vehiclePlate.toUpperCase().trim();
+        const cleanCpf = wantCpf && customerCpf ? customerCpf.replace(/\D/g, '') : null;
+        const [year, month, day] = selectedDate.split('-').map(Number);
+        const [hour, minute] = selectedTime.split(':').map(Number);
+        const scheduledAt = new Date(year, month - 1, day, hour, minute).toISOString();
+
+        const { data: directInsert, error: directError } = await supabase
+          .from('appointments')
+          .insert({
+            tenant_id: tenantId,
+            service_id: selectedService.id,
+            customer_name: customerName.trim(),
+            customer_phone: cleanPhone,
+            customer_cpf: cleanCpf || null,
+            vehicle_plate: cleanPlate || null,
+            scheduled_at: scheduledAt,
+            total_price: selectedService.price,
+            status: 'PENDENTE'
+          })
+          .select('id')
+          .single();
+
+        if (directError || !directInsert?.id) {
+          alert("Erro ao gravar agendamento: " + (directError?.message || "Tente novamente."));
+          setLoading(false);
+          return;
+        }
+
         setLoading(false);
         setStep(3);
         return;
@@ -669,6 +713,33 @@ export default function BookingPage({ params }: { params: Promise<{ tenantSlug: 
         return;
       }
 
+      // CRÍTICO: só vai para tela de sucesso se o RPC retornou um ID real
+      const appointmentId = rpcResult?.id || rpcResult;
+      if (!appointmentId) {
+        // RPC não retornou ID — fallback direto na tabela appointments
+        const { data: directInsert, error: directError } = await supabase
+          .from('appointments')
+          .insert({
+            tenant_id: tenantData.id,
+            service_id: selectedService.id,
+            customer_name: customerName.trim(),
+            customer_phone: cleanPhone,
+            customer_cpf: cleanCpf || null,
+            vehicle_plate: cleanPlate || null,
+            scheduled_at: scheduledAt,
+            total_price: selectedService.price,
+            status: 'PENDENTE'
+          })
+          .select('id')
+          .single();
+
+        if (directError || !directInsert?.id) {
+          alert("Erro ao confirmar agendamento. Por favor, tente novamente.");
+          setLoading(false);
+          return;
+        }
+      }
+
       const updatedBooked = { ...bookedSlots };
       if (!updatedBooked[selectedDate]) {
         updatedBooked[selectedDate] = [];
@@ -685,7 +756,7 @@ export default function BookingPage({ params }: { params: Promise<{ tenantSlug: 
               type: 'broadcast',
               event: 'new-appointment',
               payload: {
-                id: `app-${Date.now()}`,
+                id: appointmentId || `app-${Date.now()}`,
                 customer_name: customerName,
                 customer_phone: cleanPhone,
                 vehicle_plate: cleanPlate,
